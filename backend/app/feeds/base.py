@@ -11,7 +11,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
 
-from app.core.constants import Symbol
+from app.core.constants import Symbol, Timeframe
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +19,21 @@ class Tick:
     symbol: Symbol
     price: float
     timestamp: datetime
+    volume: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class Candle:
+    """A closed OHLC candle for one symbol/timeframe bucket."""
+
+    symbol: Symbol
+    timeframe: Timeframe
+    open_time: datetime
+    close_time: datetime
+    open: float
+    high: float
+    low: float
+    close: float
     volume: float = 0.0
 
 

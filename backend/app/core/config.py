@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     log_level: str = "INFO"
-    database_url: str = "sqlite:///./data/market_predictor.db"
+    database_url: str = "sqlite+aiosqlite:///./data/market_predictor.db"
     feed_provider: str = "mock"
     cors_origins: list[str] = ["http://localhost:5173"]
     symbols: list[Symbol] = [Symbol.XAUUSD, Symbol.EURUSD, Symbol.AUDUSD]

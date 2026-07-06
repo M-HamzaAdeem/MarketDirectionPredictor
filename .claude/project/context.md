@@ -13,12 +13,14 @@
 
 - `backend/app/core/` — `Settings` (env-driven config), enums (`Symbol`, `Timeframe`, `Direction`, `FeedStatus`), logging, exceptions.
 - `backend/app/feeds/` — `MarketDataProvider` adapter interface + implementations (`MockMarketDataProvider` in v1; TradingView/broker adapters later). Nothing outside this package should depend on a concrete provider.
-- `backend/app/storage/` — SQLAlchemy models + repositories (candles, append-only predictions). Not yet created — lands in Phase 1.
+- `backend/app/storage/` — `database.py` (lazy async engine/session factory via `get_engine()`/`get_session_factory()`, both `lru_cache`d — never construct the engine at import time), `models.py` (`CandleORM`), `repositories/candle_repository.py` (the only place that translates between `CandleORM` and the domain `Candle` dataclass). Prediction repository lands in Phase 3.
 - `backend/app/features/` — indicator math + market structure detection. Lands in Phase 2.
 - `backend/app/prediction/` — `PredictionStrategy` interface + rule-based v1 implementation. Lands in Phase 3.
-- `backend/app/services/` — orchestration glue: aggregation, scheduling, feed lifecycle, WebSocket broadcast.
-- `backend/app/api/routers/` — REST endpoints, one router per resource; `health.py` is the only one so far.
-- `backend/app/main.py` — `create_app()` factory (no module-level side effects beyond the final `app = create_app()`), so tests can build isolated instances.
+- `backend/app/services/` — `candle_aggregator.py` (pure, no I/O — rolls ticks into per-timeframe OHLC `Candle`s; this is where aggregation-rule unit tests live), `feed_service.py` (thin orchestration: owns the provider lifecycle, routes ticks to the aggregator, persists closed candles, caches latest price in memory). WebSocket broadcast lands in Phase 4.
+- `backend/app/api/routers/` — REST endpoints, one router per resource: `health.py`, `symbols.py`, `prices.py` (latest tick per symbol, from `FeedService`'s in-memory cache), `candles.py` (recent closed candles from SQLite; symbol/timeframe are typed enum path params, not free text).
+- `backend/app/api/dependencies.py` — shared FastAPI dependency accessors (e.g. `get_feed_service`, which reads `request.app.state.feed_service`).
+- `backend/app/main.py` — `create_app()` factory; the mock feed is started/stopped via a FastAPI `lifespan` context manager, not `on_event` (deprecated). No module-level side effects beyond the final `app = create_app()`, so tests can build isolated instances.
+- `backend/pytest.ini` — sets `pythonpath = .` (so `app.*` imports resolve regardless of invocation cwd) and `asyncio_mode = auto` (async `def test_...` functions run without a `@pytest.mark.asyncio` decorator on every one).
 - `frontend/src/components/` — small, single-purpose components grouped by feature area (`dashboard/`, `chart/`, `history/`).
 - `frontend/src/pages/`, `hooks/`, `services/`, `types/`, `store/` — added as each phase needs them; not all exist yet.
 - `docs/architecture.md` — full architecture + phase plan; keep in sync when the design changes.
@@ -26,7 +28,7 @@
 ## Key libraries
 
 - **Backend config:** `pydantic-settings` — single `Settings` class in `app/core/config.py`, cached via `get_settings()`. Env vars map case-insensitively to field names (no prefix); list fields (`cors_origins`, `symbols`, `timeframes`) accept comma-separated strings via a `field_validator`.
-- **Backend data access:** SQLAlchemy (added Phase 1) — repositories own sessions; no ORM models leak past the repository layer.
+- **Backend data access:** SQLAlchemy 2.0 async engine + `aiosqlite` driver (`sqlite+aiosqlite:///...`) — kept async to match the rest of the backend's async-throughout convention; see [[async-sqlalchemy-decision]] in decisions.md. Repositories own sessions; no ORM models leak past the repository layer — routers/services only ever see the domain `Candle`/`Tick` dataclasses from `app.feeds.base`.
 - **Backend testing:** pytest + pytest-asyncio + FastAPI `TestClient`/httpx.
 - **Frontend styling:** Tailwind v4 utility classes directly in JSX; no CSS Modules/styled-components.
 - **Frontend data fetching (planned):** a dedicated fetching layer in `services/apiClient.ts` + a WebSocket hook (`useMarketSocket`) — not a hand-rolled `useEffect` fetch per component.

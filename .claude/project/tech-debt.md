@@ -20,4 +20,4 @@ rather than fixed; reviewers consult it so known debt isn't re-reported as new.
 
 | ID | Location (`file:line`) | Principle / anti-pattern | Why accepted (for now) | Planned remediation | Added |
 | -- | ---------------------- | ------------------------ | ---------------------- | ------------------- | ----- |
-| _(none yet — add rows as debt is accepted)_ | | | | | |
+| TD-1 | `backend/app/services/feed_service.py:53-55` (`_persist`) | DIP — calls `get_session_factory()` directly instead of receiving it via constructor injection | Consistent with the `get_settings()`-direct-call pattern already used in routers; no test exists yet over the feed loop's write path, so the gap has no current cost | Inject the session factory into `FeedService.__init__` when the feed loop itself needs unit tests (expected around Phase 4, WebSocket broadcast work) | 2026-07-06 |
