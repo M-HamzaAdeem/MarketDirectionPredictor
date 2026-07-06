@@ -14,7 +14,7 @@
 - `backend/app/core/` — `Settings` (env-driven config), enums (`Symbol`, `Timeframe`, `Direction`, `FeedStatus`), logging, exceptions.
 - `backend/app/feeds/` — `MarketDataProvider` adapter interface + implementations (`MockMarketDataProvider` in v1; TradingView/broker adapters later). Nothing outside this package should depend on a concrete provider.
 - `backend/app/storage/` — `database.py` (lazy async engine/session factory via `get_engine()`/`get_session_factory()`, both `lru_cache`d — never construct the engine at import time), `models.py` (`CandleORM`), `repositories/candle_repository.py` (the only place that translates between `CandleORM` and the domain `Candle` dataclass). Prediction repository lands in Phase 3.
-- `backend/app/features/` — indicator math + market structure detection. Lands in Phase 2.
+- `backend/app/features/` — `indicators.py` (SMA fast/slow, RSI, ATR, momentum, volatility — vectorized pandas functions, periods are named constants), `structure.py` (`SwingPoint`, `detect_swing_points`, `detect_break_of_structure`), `feature_builder.py` (`build_feature_set` — the only entry point Phase 3's prediction engine should import from this package; combines indicators + structure into one `FeatureSet` from a window of closed candles).
 - `backend/app/prediction/` — `PredictionStrategy` interface + rule-based v1 implementation. Lands in Phase 3.
 - `backend/app/services/` — `candle_aggregator.py` (pure, no I/O — rolls ticks into per-timeframe OHLC `Candle`s; this is where aggregation-rule unit tests live), `feed_service.py` (thin orchestration: owns the provider lifecycle, routes ticks to the aggregator, persists closed candles, caches latest price in memory). WebSocket broadcast lands in Phase 4.
 - `backend/app/api/routers/` — REST endpoints, one router per resource: `health.py`, `symbols.py`, `prices.py` (latest tick per symbol, from `FeedService`'s in-memory cache), `candles.py` (recent closed candles from SQLite; symbol/timeframe are typed enum path params, not free text).
@@ -28,6 +28,7 @@
 ## Key libraries
 
 - **Backend config:** `pydantic-settings` — single `Settings` class in `app/core/config.py`, cached via `get_settings()`. Env vars map case-insensitively to field names (no prefix); list fields (`cors_origins`, `symbols`, `timeframes`) accept comma-separated strings via a `field_validator`.
+- **Backend numerics:** `pandas`/`numpy` for indicator math (`app/features/indicators.py`) — vectorized over Series, not manual loops. Indicator periods (RSI/ATR 14, SMA 10/30, momentum 10, volatility 20) are named module constants, not tuned yet; revisit once backtesting (Phase 9) can score them.
 - **Backend data access:** SQLAlchemy 2.0 async engine + `aiosqlite` driver (`sqlite+aiosqlite:///...`) — kept async to match the rest of the backend's async-throughout convention; see [[async-sqlalchemy-decision]] in decisions.md. Repositories own sessions; no ORM models leak past the repository layer — routers/services only ever see the domain `Candle`/`Tick` dataclasses from `app.feeds.base`.
 - **Backend testing:** pytest + pytest-asyncio + FastAPI `TestClient`/httpx.
 - **Frontend styling:** Tailwind v4 utility classes directly in JSX; no CSS Modules/styled-components.
