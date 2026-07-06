@@ -1,5 +1,6 @@
 """Candle persistence — the only place that translates between the domain
-Candle dataclass and the CandleORM table."""
+Candle dataclass and the CandleORM table. Reads always return domain
+Candle objects; ORM rows never leak past this repository."""
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +30,7 @@ class CandleRepository:
         )
         await self._session.commit()
 
-    async def get_recent(self, symbol: Symbol, timeframe: Timeframe, limit: int = 100) -> list[CandleORM]:
+    async def get_recent(self, symbol: Symbol, timeframe: Timeframe, limit: int = 100) -> list[Candle]:
         stmt = (
             select(CandleORM)
             .where(CandleORM.symbol == symbol.value, CandleORM.timeframe == timeframe.value)
@@ -37,8 +38,23 @@ class CandleRepository:
             .limit(limit)
         )
         result = await self._session.execute(stmt)
-        return list(reversed(result.scalars().all()))
+        rows = list(reversed(result.scalars().all()))
+        return [_to_domain(row) for row in rows]
 
-    async def get_latest(self, symbol: Symbol, timeframe: Timeframe) -> CandleORM | None:
+    async def get_latest(self, symbol: Symbol, timeframe: Timeframe) -> Candle | None:
         candles = await self.get_recent(symbol, timeframe, limit=1)
         return candles[0] if candles else None
+
+
+def _to_domain(row: CandleORM) -> Candle:
+    return Candle(
+        symbol=Symbol(row.symbol),
+        timeframe=Timeframe(row.timeframe),
+        open_time=row.open_time,
+        close_time=row.close_time,
+        open=row.open,
+        high=row.high,
+        low=row.low,
+        close=row.close,
+        volume=row.volume,
+    )

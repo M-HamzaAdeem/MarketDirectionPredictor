@@ -12,19 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_prediction_engine
 from app.core.constants import Direction, Symbol, Timeframe
-from app.feeds.base import Candle
 from app.prediction.base import Prediction
-from app.prediction.engine import PredictionEngine
+from app.prediction.engine import CANDLE_WINDOW, PredictionEngine
 from app.schemas.prediction import PredictionOut
 from app.storage.database import get_session
-from app.storage.models import CandleORM
 from app.storage.repositories.candle_repository import CandleRepository
 from app.storage.repositories.prediction_repository import PredictionRepository
 
 router = APIRouter(prefix="/predictions", tags=["predictions"])
 
 _MAX_HISTORY_LIMIT = 500
-_CANDLE_WINDOW = 100
 
 
 @router.get("/{symbol}/{timeframe}/latest", response_model=PredictionOut)
@@ -34,14 +31,14 @@ async def get_latest_prediction(
     engine: PredictionEngine = Depends(get_prediction_engine),
     session: AsyncSession = Depends(get_session),
 ) -> PredictionOut:
-    candles = await CandleRepository(session).get_recent(symbol, timeframe, limit=_CANDLE_WINDOW)
+    candles = await CandleRepository(session).get_recent(symbol, timeframe, limit=CANDLE_WINDOW)
     if not candles:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No closed candles yet for {symbol.value}/{timeframe.value}",
         )
 
-    prediction = engine.run(symbol, timeframe, [_to_domain_candle(candle) for candle in candles])
+    prediction = engine.run(symbol, timeframe, candles)
     await PredictionRepository(session).save(prediction)
     return _to_schema(prediction)
 
@@ -66,20 +63,6 @@ async def get_prediction_history(
         )
         for row in predictions
     ]
-
-
-def _to_domain_candle(candle: CandleORM) -> Candle:
-    return Candle(
-        symbol=Symbol(candle.symbol),
-        timeframe=Timeframe(candle.timeframe),
-        open_time=candle.open_time,
-        close_time=candle.close_time,
-        open=candle.open,
-        high=candle.high,
-        low=candle.low,
-        close=candle.close,
-        volume=candle.volume,
-    )
 
 
 def _to_schema(prediction: Prediction) -> PredictionOut:

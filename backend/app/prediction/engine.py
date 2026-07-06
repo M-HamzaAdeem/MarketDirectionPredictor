@@ -11,6 +11,11 @@ from app.feeds.base import Candle
 from app.features.feature_builder import build_feature_set
 from app.prediction.base import Prediction, PredictionStrategy
 
+# How many recent closed candles to feed the engine per run — shared by
+# every caller (on-demand REST, event-driven candle-close) so the window
+# can't silently diverge between them.
+CANDLE_WINDOW = 100
+
 
 class PredictionEngine:
     def __init__(self, strategy: PredictionStrategy) -> None:
