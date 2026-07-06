@@ -1,0 +1,24 @@
+#!/bin/sh
+# Git pre-commit hook — blocks ANY commit (human, IDE, or tool) when the .claude kit
+# audit fails. This is the counterpart to the Claude Code PreToolUse hook: that one
+# only sees commits Claude makes, while this one gates every commit in the repo.
+#
+# Enable it once per clone (run from the repo root):
+#     git config core.hooksPath .githooks
+# (/kit-init does this for you.)
+#
+# Thin POSIX launcher: locate Python 3 and run the cross-platform audit. Because this
+# only fires on an actual commit, blocking on a missing toolchain is the safe choice.
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+if command -v python3 >/dev/null 2>&1; then
+  PY=python3
+elif command -v python >/dev/null 2>&1; then
+  PY=python
+else
+  echo "BLOCKED: Python 3 is required to run the .claude kit audit but was not found on PATH." >&2
+  exit 1
+fi
+
+# --pre-commit: silent on PASS, exits 2 (non-zero, so git aborts the commit) on FAIL.
+exec "$PY" "$ROOT/.claude/scripts/claude-audit.py" --pre-commit

@@ -1,0 +1,11 @@
+# Installed by the EinsZweiDrei Claude Kit.
+#
+# The kit ships shell scripts and an extensionless git hook. These MUST stay LF on
+# every platform — a CRLF line ending breaks the `#!/bin/sh` shebang and `bash`/`sh`
+# parsing when the repo is checked out on Linux/macOS (e.g. a CI runner or a cloud
+# container). Without these rules a Windows checkout would silently corrupt the hooks.
+*.sh        text eol=lf
+.githooks/* text eol=lf
+
+# claude-audit.py and any other kit Python scripts are run directly; keep them LF too.
+*.py        text eol=lf
