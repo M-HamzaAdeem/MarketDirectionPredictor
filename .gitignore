@@ -6,7 +6,10 @@ __pycache__/
 logs/
 data/raw/
 data/cache/
+*.db
+*.sqlite3
 node_modules/
+dist/
 .DS_Store
 .vscode/
 .idea/
