@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import candles, health, prices, symbols
+from app.api.routers import candles, health, predictions, prices, symbols
 from app.core.config import get_settings
 from app.feeds.mock_provider import MockMarketDataProvider
 from app.services.feed_service import FeedService
@@ -49,6 +49,7 @@ def create_app() -> FastAPI:
     app.include_router(symbols.router)
     app.include_router(prices.router)
     app.include_router(candles.router)
+    app.include_router(predictions.router)
     return app
 
 
