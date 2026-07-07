@@ -70,6 +70,7 @@ async def test_get_open_signals_returns_a_persisted_open_signal_with_its_id(api:
     assert body[0]["id"] == saved.id
     assert body[0]["status"] == "open"
     assert body[0]["risk_reward"] == 3.0
+    assert body[0]["details"] == {"poi_type": "order_block"}
 
 
 async def test_get_open_signals_filters_by_symbol(api: _ApiFixture) -> None:

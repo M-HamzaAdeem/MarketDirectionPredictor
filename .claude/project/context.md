@@ -24,8 +24,9 @@
 - `frontend/src/types/` — `market.ts` (`MarketSymbol`/`Timeframe`/`Direction`/`FeedStatus`/`Candle`/`Price`), `prediction.ts`, `signal.ts`, `websocket.ts` (`WebSocketMessage` discriminated union). Field names deliberately match the backend's wire format (snake_case) exactly — no camelCase transform layer, to avoid a hand-maintained mapping that could drift from the API.
 - `frontend/src/services/` — `apiClient.ts` (`apiGet<T>`, `ApiError`), `api.ts` (one function per REST endpoint: `getSymbols`, `getCandles`, `getOpenSignals`, `getSignalHistory`, `getPredictionHistory`).
 - `frontend/src/store/marketStore.ts` — a Zustand store fed by the WebSocket (`useMarketSocket`): `feedStatus`, `prices` (by symbol), `predictions` (by `symbol:timeframe`), `signals` (by id — both new-open and later resolution updates land in the same slot). `selectOpenSignals` derives a filtered+sorted list; **any selector like it that returns a new array/object per call must be wrapped in `useShallow` from `zustand/react/shallow`** at the call site, or React's `useSyncExternalStore` treats every render as a new snapshot and infinite-loops (`"The result of getSnapshot should be cached"` — hit and fixed in `SignalFeed.tsx`).
-- `frontend/src/hooks/` — `useMarketSocket.ts` (owns the WebSocket connection + reconnect-on-fixed-delay; dispatches every message into the store), `useSymbols.ts`, `useOpenSignalsBootstrap.ts` (React Query fetch-once-on-mount to seed `signals`, which the WebSocket then keeps live).
-- `frontend/src/components/dashboard/` — `DisclaimerBanner.tsx` (Phase 0), `FeedStatusIndicator.tsx`, `SymbolCard.tsx`, `DirectionBadge.tsx`, `SignalStatusBadge.tsx`, `SignalCard.tsx`, `SignalFeed.tsx` (the dashboard's centerpiece), `PredictionPanel.tsx` (secondary, Phase 3 predictions table).
+- `frontend/src/hooks/` — `useMarketSocket.ts` (owns the WebSocket connection + reconnect-on-fixed-delay; dispatches every message into the store; `onerror` surfaces a `disconnected` feed status instead of only logging), `useSymbols.ts`, `useOpenSignalsBootstrap.ts` (React Query fetch-once-on-mount to seed `signals`, which the WebSocket then keeps live), `useCandles.ts`, `useSignalHistory.ts`, `usePredictionHistory.ts` (React Query wrappers for the Symbol Detail view — refetch automatically when the selected symbol/timeframe changes, since they're in the query key).
+- `frontend/src/components/dashboard/` — `DisclaimerBanner.tsx` (Phase 0), `FeedStatusIndicator.tsx`, `SymbolCard.tsx`, `DirectionBadge.tsx`, `SignalStatusBadge.tsx`, `SignalCard.tsx`, `SignalFeed.tsx` (the dashboard's centerpiece), `PredictionPanel.tsx` (secondary, live Phase 3 predictions), `SymbolTimeframeSelector.tsx`, `PriceChart.tsx` (`lightweight-charts` candlestick series; entry/stop/target drawn as price lines for the open signal on that symbol, if any), `SignalHistoryTable.tsx`, `PredictionHistoryTable.tsx`, `PerformanceStats.tsx` (win rate / avg realized R:R / totals, computed client-side from fetched signal history — no backend aggregation endpoint, YAGNI until a second consumer needs one), `SymbolDetail.tsx` (assembles the selector + chart + stats + both history tables; owns the local `symbol`/`timeframe` selection state).
+- `frontend/src/utils/performanceStats.ts` — `computePerformanceStats` (pure; win rate excludes `expired`/`open` from the denominator, average realized R:R is over WIN/LOSS only). First piece of frontend business logic worth a unit test — see `performanceStats.test.ts` and the Vitest setup below.
 - `frontend/src/pages/DashboardPage.tsx` — assembles the above; `App.tsx` just renders it. `main.tsx` wraps the tree in `QueryClientProvider`.
 - `docs/architecture.md` — full architecture + phase plan; keep in sync when the design changes.
 
@@ -38,7 +39,8 @@
 - **Frontend styling:** Tailwind v4 utility classes directly in JSX; no CSS Modules/styled-components.
 - **Frontend data fetching:** `@tanstack/react-query` for REST (one-shot fetch-and-cache, e.g. `useSymbols`, `useOpenSignalsBootstrap`) — not a hand-rolled `useEffect` fetch per component. `QueryClientProvider` wraps the tree in `main.tsx`.
 - **Frontend live state:** `zustand` (`store/marketStore.ts`) for WebSocket-pushed state — push-driven data doesn't fit react-query's pull/cache model, so REST bootstraps initial state and the store takes over from there via `useMarketSocket`.
-- **Frontend charting (planned, Phase 6):** `lightweight-charts`.
+- **Frontend charting:** `lightweight-charts` v5 (free/Apache-2.0 tier) — series are created via `chart.addSeries(CandlestickSeries, options)` (the v5 tree-shakeable pattern; `CandlestickSeries` is a value import from the package, not a string). Price lines (`series.createPriceLine`) draw entry/stop/target; there's no "clear all price lines" API, so callers must track and `removePriceLine` the ones they created (see `PriceChart.tsx`'s cleanup effect). **The "TradingView" attribution logo on the chart must not be hidden or removed** — it's a license condition of the free tier, not a stray artifact; only TradingView's paid Advanced Charts library allows removing it.
+- **Frontend testing:** Vitest (`npm test`) — added in Phase 6 for the first genuinely testable piece of business logic (`utils/performanceStats.ts`). No React Testing Library yet; add it when a component's behavior (not just a pure function) needs testing.
 
 ## Conventions & namespaces
 
@@ -55,6 +57,7 @@
 - **Frontend install:** `cd frontend && npm install`
 - **Frontend run:** `npm run dev` (serves `http://localhost:5173`)
 - **Frontend build:** `npm run build` (runs `tsc -b` then `vite build`)
+- **Frontend test:** `npm test` (`vitest run`)
 - **Frontend lint:** `npm run lint` (oxlint)
 
 ## Related project docs

@@ -58,6 +58,7 @@ class BroadcastService:
                 target=signal.target,
                 risk_reward=signal.risk_reward,
                 reason=signal.reason,
+                details=signal.details,
                 status=signal.status,
                 opened_at=signal.opened_at,
                 closed_at=signal.closed_at,

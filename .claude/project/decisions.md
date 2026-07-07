@@ -35,6 +35,11 @@ records accepted **design** decisions here too, mirroring how reviewers append t
 - **Implications:** what to do (or avoid) going forward; links to PR/issue/files.
 -->
 
+### 2026-07-08 — Performance stats computed client-side, not a backend aggregation endpoint
+- **Decision / learning:** `PerformanceStats` (win rate, average realized R:R, totals) is computed in the frontend (`utils/performanceStats.ts`) from the already-fetched `GET /signals/{symbol}/history` response, not via a dedicated backend `/signals/{symbol}/stats` endpoint.
+- **Why:** The only consumer is the Symbol Detail view, which already fetches the full history for the table directly above the stats. A backend aggregation endpoint would duplicate that same query for no new capability yet — YAGNI. Win rate deliberately excludes `expired`/`open` signals from the denominator (an expired signal never resolved to a clear outcome, so it shouldn't count against or for the rate); average realized R:R is over WIN/LOSS only.
+- **Implications:** If a future view needs aggregate stats *without* also wanting the full history list (e.g. a global stats widget across all 3 symbols, or paginated history where fetching everything client-side stops being practical), add a real backend aggregation endpoint then — don't keep stretching the client-side computation to cover a case it isn't shaped for.
+
 ### 2026-07-07 — broadcast_signal's id-is-None guard is a runtime check, not a type, by choice
 - **Decision / learning:** `BroadcastService.broadcast_signal` raises `ValueError` if `signal.id is None` rather than requiring a separate "PersistedSignal" type with a non-optional `id`. Both call sites (`SignalService` after `save()`, `SignalTracker` via `dataclasses.replace()` on a `Signal` read from `get_open()`) already structurally guarantee an `id` — the guard only fires on a coding regression.
 - **Why:** A type-level fix (splitting `Signal` into pre/post-persistence variants) is the cleaner long-term shape, but it ripples through both repositories and every `Signal` consumer for a single call site. That's speculative structuring for one guard — YAGNI.

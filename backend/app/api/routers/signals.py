@@ -50,6 +50,7 @@ def _to_schema(signal: Signal) -> SignalOut:
         risk_reward=signal.risk_reward,
         status=signal.status,
         reason=signal.reason,
+        details=signal.details,
         opened_at=signal.opened_at,
         closed_at=signal.closed_at,
         realized_rr=signal.realized_rr,

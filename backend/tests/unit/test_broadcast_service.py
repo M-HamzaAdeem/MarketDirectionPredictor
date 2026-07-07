@@ -87,10 +87,11 @@ async def test_broadcast_signal_sends_a_signal_message_for_a_new_open_signal() -
     manager = _RecordingConnectionManager()
     service = BroadcastService(manager)
 
-    await service.broadcast_signal(_signal())
+    await service.broadcast_signal(_signal(details={"poi_type": "fair_value_gap"}))
 
     message = manager.broadcasted[0]
     assert isinstance(message, SignalMessage)
+    assert message.details == {"poi_type": "fair_value_gap"}
     assert message.id == 1
     assert message.direction == Direction.BULLISH
     assert message.risk_reward == 3.0

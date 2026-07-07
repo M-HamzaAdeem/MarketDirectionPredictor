@@ -1,5 +1,5 @@
 import type { Direction, FeedStatus, MarketSymbol, Timeframe } from './market'
-import type { SignalStatus } from './signal'
+import type { SignalDetails, SignalStatus } from './signal'
 
 export interface PriceMessage {
   type: 'price'
@@ -40,6 +40,7 @@ export interface SignalMessage {
   target: number
   risk_reward: number
   reason: string
+  details: SignalDetails
   status: SignalStatus
   opened_at: string
   closed_at: string | null

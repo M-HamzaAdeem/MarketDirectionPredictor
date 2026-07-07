@@ -3,6 +3,7 @@ import { FeedStatusIndicator } from '../components/dashboard/FeedStatusIndicator
 import { PredictionPanel } from '../components/dashboard/PredictionPanel'
 import { SignalFeed } from '../components/dashboard/SignalFeed'
 import { SymbolCard } from '../components/dashboard/SymbolCard'
+import { SymbolDetail } from '../components/dashboard/SymbolDetail'
 import { useMarketSocket } from '../hooks/useMarketSocket'
 import type { MarketSymbol } from '../types/market'
 
@@ -37,6 +38,11 @@ export function DashboardPage() {
         <section>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Latest Predictions</h2>
           <PredictionPanel />
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Symbol Detail</h2>
+          <SymbolDetail />
         </section>
       </main>
     </div>

@@ -3,7 +3,7 @@ The `type` literal discriminates the payload so the frontend can dispatch
 on shape without guessing."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -51,6 +51,7 @@ class SignalMessage(BaseModel):
     target: float
     risk_reward: float
     reason: str
+    details: dict[str, Any]
     status: SignalStatus
     opened_at: datetime
     closed_at: datetime | None
