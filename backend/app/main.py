@@ -12,13 +12,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.dependencies import get_prediction_engine
-from app.api.routers import candles, health, predictions, prices, symbols, websocket
+from app.api.routers import candles, health, predictions, prices, signals, symbols, websocket
 from app.core.config import get_settings
 from app.feeds.mock_provider import MockMarketDataProvider
 from app.services.broadcast_service import BroadcastService
 from app.services.connection_manager import ConnectionManager
 from app.services.feed_service import FeedService
 from app.services.prediction_service import PredictionService
+from app.services.signal_service import SignalService
+from app.services.signal_tracker import SignalTracker
 from app.storage.database import get_session_factory, init_models
 
 
@@ -29,10 +31,20 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     session_factory = get_session_factory()
     broadcaster = BroadcastService(app.state.connection_manager)
-    prediction_service = PredictionService(get_prediction_engine(), broadcaster, session_factory)
+
+    # Order matters: handlers run sequentially per candle (see
+    # FeedService._handle_closed_candle / CandleCloseHandler). SignalTracker
+    # must resolve existing OPEN signals before SignalService can create a
+    # new one from this same candle, or a signal could be opened and
+    # resolved against the very candle that triggered it.
+    candle_close_handlers = [
+        PredictionService(get_prediction_engine(), broadcaster, session_factory),
+        SignalTracker(session_factory),
+        SignalService(broadcaster, session_factory),
+    ]
 
     feed_service = FeedService(
-        MockMarketDataProvider(), settings, broadcaster, prediction_service, session_factory
+        MockMarketDataProvider(), settings, broadcaster, session_factory, candle_close_handlers
     )
     app.state.feed_service = feed_service
     await feed_service.start()
@@ -61,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(prices.router)
     app.include_router(candles.router)
     app.include_router(predictions.router)
+    app.include_router(signals.router)
     app.include_router(websocket.router)
     return app
 

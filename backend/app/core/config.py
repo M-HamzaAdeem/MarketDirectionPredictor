@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     feed_provider: str = "mock"
     cors_origins: list[str] = ["http://localhost:5173"]
     symbols: list[Symbol] = [Symbol.XAUUSD, Symbol.EURUSD, Symbol.AUDUSD]
-    timeframes: list[Timeframe] = [Timeframe.M1, Timeframe.M5, Timeframe.M15]
+    timeframes: list[Timeframe] = [Timeframe.M1, Timeframe.M5, Timeframe.M15, Timeframe.H1, Timeframe.H4]
 
     @field_validator("cors_origins", "symbols", "timeframes", mode="before")
     @classmethod

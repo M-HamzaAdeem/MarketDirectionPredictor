@@ -3,7 +3,8 @@ from datetime import UTC, datetime
 from app.core.constants import Direction, FeedStatus, Symbol, Timeframe
 from app.feeds.base import Tick
 from app.prediction.base import Prediction
-from app.schemas.websocket_messages import FeedStatusMessage, PredictionMessage, PriceMessage
+from app.prediction.signal import Signal
+from app.schemas.websocket_messages import FeedStatusMessage, PredictionMessage, PriceMessage, SignalMessage
 from app.services.broadcast_service import BroadcastService
 
 
@@ -60,3 +61,28 @@ async def test_broadcast_feed_status_sends_a_feed_status_message() -> None:
     message = manager.broadcasted[0]
     assert isinstance(message, FeedStatusMessage)
     assert message.status == FeedStatus.MOCK
+
+
+async def test_broadcast_signal_sends_a_signal_message() -> None:
+    manager = _RecordingConnectionManager()
+    service = BroadcastService(manager)
+    signal = Signal(
+        symbol=Symbol.XAUUSD,
+        entry_timeframe=Timeframe.M15,
+        direction=Direction.BULLISH,
+        entry=2350.0,
+        stop=2345.0,
+        target=2365.0,
+        risk_reward=3.0,
+        reason="test reason",
+        details={},
+        opened_at=datetime.now(UTC),
+    )
+
+    await service.broadcast_signal(signal)
+
+    message = manager.broadcasted[0]
+    assert isinstance(message, SignalMessage)
+    assert message.direction == Direction.BULLISH
+    assert message.risk_reward == 3.0
+    assert message.reason == "test reason"

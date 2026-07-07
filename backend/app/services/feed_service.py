@@ -1,12 +1,13 @@
 """Owns the feed lifecycle: connects the configured provider, routes ticks
 to the candle aggregator, persists closed candles, keeps an in-memory
-latest-price cache for fast reads, and drives the two other Phase 4
-consumers of a live feed — broadcasting each tick and triggering a fresh
-prediction whenever a candle closes.
+latest-price cache for fast reads, broadcasts every tick, and — after
+persisting a closed candle — runs it through each registered
+CandleCloseHandler (PredictionService, SignalTracker, SignalService today;
+adding a fourth reaction to a candle close means adding it to the handler
+list at composition time in main.py, not touching this class).
 
 Thin orchestration only — the aggregation rules live in CandleAggregator,
-persistence lives in CandleRepository, and prediction logic lives in
-PredictionService; all tested independently.
+persistence lives in CandleRepository; each handler is tested independently.
 """
 
 import asyncio
@@ -19,7 +20,7 @@ from app.core.constants import FeedStatus, Symbol
 from app.feeds.base import Candle, MarketDataProvider, Tick
 from app.services.broadcast_service import BroadcastService
 from app.services.candle_aggregator import CandleAggregator
-from app.services.prediction_service import PredictionService
+from app.services.candle_close_handler import CandleCloseHandler
 from app.storage.repositories.candle_repository import CandleRepository
 
 logger = logging.getLogger(__name__)
@@ -31,14 +32,14 @@ class FeedService:
         provider: MarketDataProvider,
         settings: Settings,
         broadcaster: BroadcastService,
-        prediction_service: PredictionService,
         session_factory: async_sessionmaker[AsyncSession],
+        candle_close_handlers: list[CandleCloseHandler],
     ) -> None:
         self._provider = provider
         self._settings = settings
         self._broadcaster = broadcaster
-        self._prediction_service = prediction_service
         self._session_factory = session_factory
+        self._candle_close_handlers = candle_close_handlers
         self._aggregator = CandleAggregator(settings.timeframes)
         self._latest_prices: dict[Symbol, Tick] = {}
         self._task: asyncio.Task[None] | None = None
@@ -76,13 +77,14 @@ class FeedService:
             logger.exception("Feed loop terminated unexpectedly")
 
     async def _handle_closed_candle(self, candle: Candle) -> None:
-        # Isolated from _run's loop: a persistence or prediction failure on
-        # one candle must not take down tick ingestion/price broadcasting.
+        # Isolated from _run's loop: a persistence or handler failure on one
+        # candle must not take down tick ingestion/price broadcasting.
         try:
             await self._persist(candle)
-            await self._prediction_service.on_candle_closed(candle)
+            for handler in self._candle_close_handlers:
+                await handler.on_candle_closed(candle)
         except Exception:
-            logger.exception("Failed to persist/predict for closed candle %s/%s", candle.symbol, candle.timeframe)
+            logger.exception("Failed handling closed candle %s/%s", candle.symbol, candle.timeframe)
 
     async def _persist(self, candle: Candle) -> None:
         async with self._session_factory() as session:

@@ -21,6 +21,9 @@ _BASE_PRICES: dict[Symbol, float] = {
 
 _TICK_INTERVAL_SECONDS = 1.0
 _MAX_STEP_RATIO = 0.0005  # caps synthetic price jump per tick to 0.05%
+_MIN_TICK_VOLUME = 0.1
+_MAX_TICK_VOLUME = 5.0  # synthetic per-tick size; gives candle aggregation and
+# volume-profile analysis something non-zero to work with — not real volume.
 
 
 class MockMarketDataProvider(MarketDataProvider):
@@ -48,6 +51,7 @@ class MockMarketDataProvider(MarketDataProvider):
                     symbol=symbol,
                     price=self._last_price[symbol],
                     timestamp=datetime.now(UTC),
+                    volume=self._next_volume(),
                 )
             await asyncio.sleep(_TICK_INTERVAL_SECONDS)
 
@@ -55,3 +59,6 @@ class MockMarketDataProvider(MarketDataProvider):
         current = self._last_price[symbol]
         step = current * _MAX_STEP_RATIO * self._rng.uniform(-1, 1)
         return round(current + step, 5)
+
+    def _next_volume(self) -> float:
+        return round(self._rng.uniform(_MIN_TICK_VOLUME, _MAX_TICK_VOLUME), 3)

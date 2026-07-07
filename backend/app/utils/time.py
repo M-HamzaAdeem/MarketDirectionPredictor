@@ -8,6 +8,8 @@ _TIMEFRAME_SECONDS: dict[Timeframe, int] = {
     Timeframe.M1: 60,
     Timeframe.M5: 300,
     Timeframe.M15: 900,
+    Timeframe.H1: 3_600,
+    Timeframe.H4: 14_400,
 }
 
 

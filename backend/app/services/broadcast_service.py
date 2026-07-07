@@ -1,14 +1,20 @@
 """Thin translation layer between domain events (a tick, a fresh
-prediction, a feed-status change) and the WebSocket wire format. Keeps
-ConnectionManager and message-schema details out of FeedService and
-PredictionService."""
+prediction, a feed-status change, a new ICT signal) and the WebSocket wire
+format. Keeps ConnectionManager and message-schema details out of
+FeedService, PredictionService, and SignalService."""
 
 from datetime import UTC, datetime
 
 from app.core.constants import FeedStatus
 from app.feeds.base import Tick
 from app.prediction.base import Prediction
-from app.schemas.websocket_messages import FeedStatusMessage, PredictionMessage, PriceMessage
+from app.prediction.signal import Signal
+from app.schemas.websocket_messages import (
+    FeedStatusMessage,
+    PredictionMessage,
+    PriceMessage,
+    SignalMessage,
+)
 from app.services.connection_manager import ConnectionManager
 
 
@@ -36,3 +42,17 @@ class BroadcastService:
 
     async def broadcast_feed_status(self, status: FeedStatus) -> None:
         await self._connection_manager.broadcast(FeedStatusMessage(status=status, timestamp=datetime.now(UTC)))
+
+    async def broadcast_signal(self, signal: Signal) -> None:
+        await self._connection_manager.broadcast(
+            SignalMessage(
+                symbol=signal.symbol,
+                direction=signal.direction,
+                entry=signal.entry,
+                stop=signal.stop,
+                target=signal.target,
+                risk_reward=signal.risk_reward,
+                reason=signal.reason,
+                opened_at=signal.opened_at,
+            )
+        )

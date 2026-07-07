@@ -1,13 +1,15 @@
 """SQLAlchemy ORM models. Kept separate from the domain dataclasses in
-app.feeds.base / app.prediction.base (Candle, Tick, Prediction) so
-persistence concerns never leak into aggregation/prediction logic."""
+app.feeds.base / app.prediction.base / app.prediction.signal (Candle,
+Tick, Prediction, Signal) so persistence concerns never leak into
+aggregation/prediction logic."""
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Index, String
+from sqlalchemy import Float, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.storage.database import Base
+from app.storage.types import UTCDateTime
 
 
 class CandleORM(Base):
@@ -19,8 +21,8 @@ class CandleORM(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(16))
     timeframe: Mapped[str] = mapped_column(String(4))
-    open_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    close_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    open_time: Mapped[datetime] = mapped_column(UTCDateTime)
+    close_time: Mapped[datetime] = mapped_column(UTCDateTime)
     open: Mapped[float] = mapped_column(Float)
     high: Mapped[float] = mapped_column(Float)
     low: Mapped[float] = mapped_column(Float)
@@ -44,4 +46,30 @@ class PredictionORM(Base):
     confidence: Mapped[float] = mapped_column(Float)
     reason: Mapped[str] = mapped_column(String(512))
     price: Mapped[float] = mapped_column(Float)
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    timestamp: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class SignalORM(Base):
+    """Every generated ICT signal. Unlike CandleORM/PredictionORM (pure
+    append-only logs), a signal row is updated once when it resolves
+    (status/closed_at/realized_rr) — the one place this codebase mutates
+    an existing row, because a signal genuinely has a lifecycle
+    (open -> win/loss/expired), not a point-in-time fact."""
+
+    __tablename__ = "signals"
+    __table_args__ = (Index("ix_signals_symbol_status", "symbol", "status"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(16))
+    entry_timeframe: Mapped[str] = mapped_column(String(4))
+    direction: Mapped[str] = mapped_column(String(8))
+    entry: Mapped[float] = mapped_column(Float)
+    stop: Mapped[float] = mapped_column(Float)
+    target: Mapped[float] = mapped_column(Float)
+    risk_reward: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(8), default="open")  # must match SignalStatus.OPEN.value
+    reason: Mapped[str] = mapped_column(String(512))
+    details: Mapped[str] = mapped_column(Text)  # JSON-encoded structured breakdown
+    opened_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    realized_rr: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -34,4 +34,16 @@ class FeedStatusMessage(BaseModel):
     timestamp: datetime
 
 
-WebSocketMessage = PriceMessage | PredictionMessage | FeedStatusMessage
+class SignalMessage(BaseModel):
+    type: Literal["signal"] = "signal"
+    symbol: Symbol
+    direction: Direction
+    entry: float
+    stop: float
+    target: float
+    risk_reward: float
+    reason: str
+    opened_at: datetime
+
+
+WebSocketMessage = PriceMessage | PredictionMessage | FeedStatusMessage | SignalMessage
