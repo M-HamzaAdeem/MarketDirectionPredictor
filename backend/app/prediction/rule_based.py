@@ -20,8 +20,8 @@ _TREND_WEIGHT = 1.0
 _RSI_WEIGHT = 1.0
 _MOMENTUM_WEIGHT = 1.0
 
-_RSI_BULLISH_THRESHOLD = 60.0
-_RSI_BEARISH_THRESHOLD = 40.0
+RSI_BULLISH_THRESHOLD = 60.0
+RSI_BEARISH_THRESHOLD = 40.0
 
 _Vote = tuple[float, float, str]  # (weight, vote in [-1, 0, 1], reason fragment)
 
@@ -62,9 +62,9 @@ def _trend_signal(features: FeatureSet) -> tuple[float, str] | None:
 def _rsi_signal(features: FeatureSet) -> tuple[float, str] | None:
     if features.rsi is None:
         return None
-    if features.rsi >= _RSI_BULLISH_THRESHOLD:
+    if features.rsi >= RSI_BULLISH_THRESHOLD:
         return 1.0, f"RSI {features.rsi:.0f} bullish"
-    if features.rsi <= _RSI_BEARISH_THRESHOLD:
+    if features.rsi <= RSI_BEARISH_THRESHOLD:
         return -1.0, f"RSI {features.rsi:.0f} bearish"
     return 0.0, f"RSI {features.rsi:.0f} neutral"
 

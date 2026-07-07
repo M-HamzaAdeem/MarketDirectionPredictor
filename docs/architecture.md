@@ -66,7 +66,15 @@ silently showing a stale prediction as if it were live.
 4. WebSocket live updates + scheduler.
 5. Frontend dashboard MVP wired to the mock feed end-to-end.
 6. Charting (`lightweight-charts`) & prediction history UI.
-7. Settings/config surface.
+7. Settings/config surface — read-only for v1 (`GET /config`, a `/settings`
+   page): `Settings` is loaded once at backend startup with no reload
+   mechanism, and the ICT/prediction thresholds are plain module constants,
+   not persisted config, so there's nothing to safely write back yet. Live
+   editing needs two prerequisites first: a persisted, mutable config store
+   (rather than module constants) for the strategy parameters, and either a
+   `Settings` reload path or accepting that some fields (symbols, feed
+   provider) always require a restart. Revisit once backtesting (Phase 9)
+   creates real demand for adjusting thresholds without redeploying.
 8. Hardening — reconnect/backoff, security pass, coverage gate, docs sync.
 9. (Later) Real TradingView/broker feed adapters + fallback chain,
    backtesting engine, ML prediction strategy. Auto-trading remains out of

@@ -35,6 +35,11 @@ records accepted **design** decisions here too, mirroring how reviewers append t
 - **Implications:** what to do (or avoid) going forward; links to PR/issue/files.
 -->
 
+### 2026-07-08 — websocket-hook-at-app-level: useMarketSocket moved from DashboardPage to App
+- **Decision / learning:** Phase 7 added `react-router-dom` with a second route (`/settings`). `useMarketSocket()` moved from being called inside `DashboardPage` to being called once in `App.tsx`, above `<Routes>`, and `DashboardPage`/`SettingsPage` both render through the new `AppShell` layout component instead of duplicating header/nav/disclaimer markup.
+- **Why:** A hook called inside a routed page unmounts (and its WebSocket connection closes) every time the user navigates away from that page, then has to reconnect and re-bootstrap the whole live store on the way back. Since the WebSocket feeds global state (`marketStore.ts`) that both the dashboard and any future page could use, it belongs above the router, not inside one specific page. Verified live in-browser: navigating Dashboard → Settings → Dashboard accumulated more predictions/candles across the round trip with zero reconnect, and zero console errors either direction.
+- **Implications:** Any future page that needs live WebSocket-pushed state reads it straight from `marketStore.ts` — it must never call `useMarketSocket()` itself. If a page-specific WebSocket subscription is ever needed (e.g. a symbol-specific channel), extend the store/hook rather than instantiating a second socket connection.
+
 ### 2026-07-08 — Performance stats computed client-side, not a backend aggregation endpoint
 - **Decision / learning:** `PerformanceStats` (win rate, average realized R:R, totals) is computed in the frontend (`utils/performanceStats.ts`) from the already-fetched `GET /signals/{symbol}/history` response, not via a dedicated backend `/signals/{symbol}/stats` endpoint.
 - **Why:** The only consumer is the Symbol Detail view, which already fetches the full history for the table directly above the stats. A backend aggregation endpoint would duplicate that same query for no new capability yet — YAGNI. Win rate deliberately excludes `expired`/`open` signals from the denominator (an expired signal never resolved to a clear outcome, so it shouldn't count against or for the rate); average realized R:R is over WIN/LOSS only.

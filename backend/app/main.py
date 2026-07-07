@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.dependencies import get_prediction_engine
-from app.api.routers import candles, health, predictions, prices, signals, symbols, websocket
+from app.api.routers import candles, config, health, predictions, prices, signals, symbols, websocket
 from app.core.config import get_settings
 from app.feeds.mock_provider import MockMarketDataProvider
 from app.services.broadcast_service import BroadcastService
@@ -73,6 +73,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
+    app.include_router(config.router)
     app.include_router(symbols.router)
     app.include_router(prices.router)
     app.include_router(candles.router)

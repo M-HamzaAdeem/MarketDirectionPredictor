@@ -1,10 +1,15 @@
 import { apiGet } from './apiClient'
+import type { Config } from '../types/config'
 import type { Candle, MarketSymbol, Timeframe } from '../types/market'
 import type { Prediction } from '../types/prediction'
 import type { Signal } from '../types/signal'
 
 export function getSymbols(): Promise<MarketSymbol[]> {
   return apiGet<MarketSymbol[]>('/symbols')
+}
+
+export function getConfig(): Promise<Config> {
+  return apiGet<Config>('/config')
 }
 
 export function getCandles(symbol: MarketSymbol, timeframe: Timeframe, limit = 100): Promise<Candle[]> {
