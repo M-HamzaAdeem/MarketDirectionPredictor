@@ -44,15 +44,23 @@ class BroadcastService:
         await self._connection_manager.broadcast(FeedStatusMessage(status=status, timestamp=datetime.now(UTC)))
 
     async def broadcast_signal(self, signal: Signal) -> None:
+        if signal.id is None:
+            raise ValueError("Cannot broadcast a Signal that hasn't been persisted (id is None)")
+
         await self._connection_manager.broadcast(
             SignalMessage(
+                id=signal.id,
                 symbol=signal.symbol,
+                entry_timeframe=signal.entry_timeframe,
                 direction=signal.direction,
                 entry=signal.entry,
                 stop=signal.stop,
                 target=signal.target,
                 risk_reward=signal.risk_reward,
                 reason=signal.reason,
+                status=signal.status,
                 opened_at=signal.opened_at,
+                closed_at=signal.closed_at,
+                realized_rr=signal.realized_rr,
             )
         )

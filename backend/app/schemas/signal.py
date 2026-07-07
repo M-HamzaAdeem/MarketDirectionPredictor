@@ -7,6 +7,7 @@ from app.prediction.signal import SignalStatus
 
 
 class SignalOut(BaseModel):
+    id: int
     symbol: Symbol
     entry_timeframe: Timeframe
     direction: Direction

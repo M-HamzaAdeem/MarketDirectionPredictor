@@ -37,7 +37,8 @@ def _candle(low: float, high: float, close_time: datetime) -> Candle:
 
 
 def _tracker() -> SignalTracker:
-    return SignalTracker(session_factory=None)  # type: ignore[arg-type]  # _resolve doesn't touch the DB
+    # _resolve doesn't touch the DB or the broadcaster.
+    return SignalTracker(session_factory=None, broadcaster=None)  # type: ignore[arg-type]
 
 
 def test_bullish_stop_hit_resolves_to_loss() -> None:

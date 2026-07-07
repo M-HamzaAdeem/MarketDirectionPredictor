@@ -39,12 +39,16 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # resolved against the very candle that triggered it.
     candle_close_handlers = [
         PredictionService(get_prediction_engine(), broadcaster, session_factory),
-        SignalTracker(session_factory),
+        SignalTracker(session_factory, broadcaster),
         SignalService(broadcaster, session_factory),
     ]
 
     feed_service = FeedService(
-        MockMarketDataProvider(), settings, broadcaster, session_factory, candle_close_handlers
+        MockMarketDataProvider(time_acceleration=settings.mock_time_acceleration),
+        settings,
+        broadcaster,
+        session_factory,
+        candle_close_handlers,
     )
     app.state.feed_service = feed_service
     await feed_service.start()

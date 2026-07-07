@@ -40,6 +40,7 @@ async def get_signal_history(
 
 def _to_schema(signal: Signal) -> SignalOut:
     return SignalOut(
+        id=signal.id,
         symbol=signal.symbol,
         entry_timeframe=signal.entry_timeframe,
         direction=signal.direction,

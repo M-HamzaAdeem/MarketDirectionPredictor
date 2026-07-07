@@ -11,7 +11,19 @@ and AUDUSD across 1m/5m/15m timeframes.
 
 Version 1 runs on synthetic (mock) market data so the full pipeline —
 feed → candles → indicators → prediction → dashboard — can be built and
-tested before wiring in a real feed.
+tested before wiring in a real feed. Two prediction paths run side by
+side: a Phase 3 rule-based direction/confidence score on every candle
+close ([docs/prediction-method.md](docs/prediction-method.md)), and an
+ICT/Smart Money Concepts signal engine that only ever produces a fully-
+specified, risk:reward-gated trade setup — entry/stop/target and full
+reasoning, graded to a win/loss/expired outcome once it resolves
+([docs/signal-method.md](docs/signal-method.md)).
+
+The dashboard shows live prices, feed status, the open-signal feed (the
+main event), and the Phase 3 predictions table — all pushed over
+WebSocket. The mock feed runs on an accelerated virtual clock by default
+(`MOCK_TIME_ACCELERATION=60` in `backend/.env`), so a 4-hour candle closes
+in about 4 real minutes instead of 4 real hours.
 
 ## Stack
 

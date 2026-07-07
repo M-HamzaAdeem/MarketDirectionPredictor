@@ -1,9 +1,11 @@
 from datetime import UTC, datetime
 
+import pytest
+
 from app.core.constants import Direction, FeedStatus, Symbol, Timeframe
 from app.feeds.base import Tick
 from app.prediction.base import Prediction
-from app.prediction.signal import Signal
+from app.prediction.signal import Signal, SignalStatus
 from app.schemas.websocket_messages import FeedStatusMessage, PredictionMessage, PriceMessage, SignalMessage
 from app.services.broadcast_service import BroadcastService
 
@@ -63,26 +65,58 @@ async def test_broadcast_feed_status_sends_a_feed_status_message() -> None:
     assert message.status == FeedStatus.MOCK
 
 
-async def test_broadcast_signal_sends_a_signal_message() -> None:
+def _signal(**overrides: object) -> Signal:
+    defaults: dict[str, object] = {
+        "id": 1,
+        "symbol": Symbol.XAUUSD,
+        "entry_timeframe": Timeframe.M15,
+        "direction": Direction.BULLISH,
+        "entry": 2350.0,
+        "stop": 2345.0,
+        "target": 2365.0,
+        "risk_reward": 3.0,
+        "reason": "test reason",
+        "details": {},
+        "opened_at": datetime.now(UTC),
+    }
+    defaults.update(overrides)
+    return Signal(**defaults)  # type: ignore[arg-type]
+
+
+async def test_broadcast_signal_sends_a_signal_message_for_a_new_open_signal() -> None:
     manager = _RecordingConnectionManager()
     service = BroadcastService(manager)
-    signal = Signal(
-        symbol=Symbol.XAUUSD,
-        entry_timeframe=Timeframe.M15,
-        direction=Direction.BULLISH,
-        entry=2350.0,
-        stop=2345.0,
-        target=2365.0,
-        risk_reward=3.0,
-        reason="test reason",
-        details={},
-        opened_at=datetime.now(UTC),
-    )
 
-    await service.broadcast_signal(signal)
+    await service.broadcast_signal(_signal())
 
     message = manager.broadcasted[0]
     assert isinstance(message, SignalMessage)
+    assert message.id == 1
     assert message.direction == Direction.BULLISH
     assert message.risk_reward == 3.0
     assert message.reason == "test reason"
+    assert message.status == SignalStatus.OPEN
+    assert message.closed_at is None
+
+
+async def test_broadcast_signal_sends_a_signal_message_for_a_resolved_signal() -> None:
+    manager = _RecordingConnectionManager()
+    service = BroadcastService(manager)
+    closed_at = datetime.now(UTC)
+
+    await service.broadcast_signal(
+        _signal(status=SignalStatus.WIN, closed_at=closed_at, realized_rr=3.0)
+    )
+
+    message = manager.broadcasted[0]
+    assert message.status == SignalStatus.WIN
+    assert message.closed_at == closed_at
+    assert message.realized_rr == 3.0
+
+
+async def test_broadcast_signal_rejects_an_unpersisted_signal() -> None:
+    manager = _RecordingConnectionManager()
+    service = BroadcastService(manager)
+
+    with pytest.raises(ValueError, match="hasn't been persisted"):
+        await service.broadcast_signal(_signal(id=None))

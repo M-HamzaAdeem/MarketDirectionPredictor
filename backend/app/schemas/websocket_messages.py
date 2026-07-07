@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.core.constants import Direction, FeedStatus, Symbol, Timeframe
+from app.prediction.signal import SignalStatus
 
 
 class PriceMessage(BaseModel):
@@ -35,15 +36,25 @@ class FeedStatusMessage(BaseModel):
 
 
 class SignalMessage(BaseModel):
+    """Broadcast both when a signal opens (status=OPEN) and again whenever
+    SignalTracker resolves it (status=WIN/LOSS/EXPIRED) — the frontend
+    keys on `id` to know whether to add a new entry or update one it
+    already has."""
+
     type: Literal["signal"] = "signal"
+    id: int
     symbol: Symbol
+    entry_timeframe: Timeframe
     direction: Direction
     entry: float
     stop: float
     target: float
     risk_reward: float
     reason: str
+    status: SignalStatus
     opened_at: datetime
+    closed_at: datetime | None
+    realized_rr: float | None
 
 
 WebSocketMessage = PriceMessage | PredictionMessage | FeedStatusMessage | SignalMessage

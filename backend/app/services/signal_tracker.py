@@ -10,6 +10,8 @@ for already-closed candles), the stop is assumed to have been hit first —
 the conservative, worst-case read, consistent with never overstating a win.
 """
 
+import logging
+from dataclasses import replace
 from datetime import timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -17,7 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.constants import Direction
 from app.feeds.base import Candle
 from app.prediction.signal import Signal, SignalStatus
+from app.services.broadcast_service import BroadcastService
 from app.storage.repositories.signal_repository import SignalRepository
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_EXPIRY = timedelta(days=5)
 
@@ -26,12 +31,16 @@ class SignalTracker:
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
+        broadcaster: BroadcastService,
         expiry: timedelta = DEFAULT_EXPIRY,
     ) -> None:
         self._session_factory = session_factory
+        self._broadcaster = broadcaster
         self._expiry = expiry
 
     async def on_candle_closed(self, candle: Candle) -> None:
+        resolved: list[Signal] = []
+
         async with self._session_factory() as session:
             repository = SignalRepository(session)
             open_signals = await repository.get_open(candle.symbol)
@@ -42,6 +51,17 @@ class SignalTracker:
                 if outcome is not None:
                     status, realized_rr = outcome
                     await repository.update_outcome(signal.id, status, candle.close_time, realized_rr)
+                    resolved.append(
+                        replace(signal, status=status, closed_at=candle.close_time, realized_rr=realized_rr)
+                    )
+
+        for signal in resolved:
+            # Each broadcast is isolated: a failure on one resolved signal
+            # (already persisted) must not cost the rest their notification.
+            try:
+                await self._broadcaster.broadcast_signal(signal)
+            except Exception:
+                logger.exception("Failed to broadcast resolution for signal %s", signal.id)
 
     def _resolve(self, signal: Signal, candle: Candle) -> tuple[SignalStatus, float] | None:
         if self._stop_hit(signal, candle):
