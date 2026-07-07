@@ -38,13 +38,19 @@ def compute_volume_profile(
     """Distributes each candle's volume evenly across the price bins its
     [low, high] range overlaps. `highs`/`lows`/`volumes` must cover exactly
     the fixed range being profiled (e.g. one impulse leg). Returns None if
-    there's no usable range (empty input, or zero price range)."""
+    there's no usable range (empty input, zero price range, or no real
+    volume data — e.g. an OTC forex/commodity feed that reports volume=0
+    for every candle, where a "highest-volume bin" would be meaningless,
+    arbitrary noise rather than an actual point of control)."""
     if not highs:
         return None
 
     range_low = min(lows)
     range_high = max(highs)
     if range_high == range_low:
+        return None
+
+    if sum(volumes) <= 0:
         return None
 
     bin_size = (range_high - range_low) / bin_count

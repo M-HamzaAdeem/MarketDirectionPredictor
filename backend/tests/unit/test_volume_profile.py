@@ -11,6 +11,17 @@ def test_compute_volume_profile_returns_none_for_a_zero_price_range() -> None:
     assert compute_volume_profile([10.0, 10.0], [10.0, 10.0], [5.0, 5.0]) is None
 
 
+def test_compute_volume_profile_returns_none_when_every_candle_has_zero_volume() -> None:
+    # OTC forex/commodity feeds (e.g. Twelve Data) report no real volume —
+    # a "highest-volume bin" over all-zero input would be meaningless noise
+    # (whichever bin happens to sort first), not a real point of control.
+    highs = [10.0, 20.0, 100.0]
+    lows = [9.0, 19.0, 99.0]
+    volumes = [0.0, 0.0, 0.0]
+
+    assert compute_volume_profile(highs, lows, volumes) is None
+
+
 def test_compute_volume_profile_places_poc_at_the_highest_volume_bin() -> None:
     # A tall, narrow spike of volume clustered near the bottom of the range.
     highs = [10.0, 20.0, 100.0]

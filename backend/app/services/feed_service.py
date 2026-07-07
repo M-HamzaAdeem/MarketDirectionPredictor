@@ -15,6 +15,12 @@ backoff, broadcasting FeedStatus.DISCONNECTED for the duration and back to
 the provider's nominal status once ticks resume. `MockMarketDataProvider`
 never actually fails today, but a real feed adapter will, and this is the
 seam that handles it without every provider needing its own retry logic.
+
+`backfill()` fetches and persists missing historical candles for every
+configured symbol/timeframe via the provider's `fetch_history()` before
+`start()` begins live streaming — without it, a real feed would need real
+hours/days of live candles to accumulate before predictions or ICT signals
+could run at all (see decisions.md).
 """
 
 import asyncio
@@ -23,7 +29,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.core.constants import FeedStatus, Symbol
+from app.core.constants import FeedStatus, Symbol, Timeframe
 from app.feeds.base import Candle, MarketDataProvider, Tick
 from app.services.broadcast_service import BroadcastService
 from app.services.candle_aggregator import CandleAggregator
@@ -35,6 +41,7 @@ logger = logging.getLogger(__name__)
 _INITIAL_RECONNECT_DELAY_SECONDS = 1.0
 _MAX_RECONNECT_DELAY_SECONDS = 30.0
 _RECONNECT_BACKOFF_MULTIPLIER = 2.0
+_BACKFILL_CANDLE_COUNT = 100
 
 
 class FeedService:
@@ -45,7 +52,6 @@ class FeedService:
         broadcaster: BroadcastService,
         session_factory: async_sessionmaker[AsyncSession],
         candle_close_handlers: list[CandleCloseHandler],
-        nominal_status: FeedStatus = FeedStatus.MOCK,
     ) -> None:
         self._provider = provider
         self._settings = settings
@@ -59,8 +65,29 @@ class FeedService:
         # normally — MOCK for MockMarketDataProvider, LIVE for a real feed.
         # `status` itself moves to DISCONNECTED while reconnecting and back
         # to this once the stream recovers.
-        self._nominal_status = nominal_status
-        self.status: FeedStatus = nominal_status
+        self._nominal_status = provider.nominal_status
+        self.status: FeedStatus = provider.nominal_status
+
+    async def backfill(self) -> None:
+        async with self._session_factory() as session:
+            repository = CandleRepository(session)
+            for symbol in self._settings.symbols:
+                for timeframe in self._settings.timeframes:
+                    await self._backfill_one(repository, symbol, timeframe)
+
+    async def _backfill_one(self, repository: CandleRepository, symbol: Symbol, timeframe: Timeframe) -> None:
+        try:
+            existing = await repository.get_recent(symbol, timeframe, limit=_BACKFILL_CANDLE_COUNT)
+            if len(existing) >= _BACKFILL_CANDLE_COUNT:
+                return
+            candles = await self._provider.fetch_history(symbol, timeframe, _BACKFILL_CANDLE_COUNT)
+            await repository.save_many_if_missing(candles)
+        except Exception:
+            # One symbol/timeframe failing to backfill (rate limit, transient
+            # network error, unsupported pair) shouldn't stop the rest or
+            # abort startup — it just starts that pair cold, same as before
+            # this feature existed.
+            logger.exception("Historical backfill failed for %s/%s", symbol.value, timeframe.value)
 
     async def start(self) -> None:
         await self._provider.connect()

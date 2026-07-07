@@ -32,3 +32,8 @@ class FeedStatus(str, Enum):
     LIVE = "live"
     DEGRADED = "degraded"
     DISCONNECTED = "disconnected"
+
+
+class FeedProvider(str, Enum):
+    MOCK = "mock"
+    TWELVE_DATA = "twelve_data"

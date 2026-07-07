@@ -23,8 +23,8 @@ import random
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
-from app.core.constants import Symbol
-from app.feeds.base import MarketDataProvider, Tick
+from app.core.constants import FeedStatus, Symbol, Timeframe
+from app.feeds.base import Candle, MarketDataProvider, Tick
 
 _BASE_PRICES: dict[Symbol, float] = {
     Symbol.XAUUSD: 2350.0,
@@ -48,6 +48,10 @@ class MockMarketDataProvider(MarketDataProvider):
         self._rng = rng if rng is not None else random.Random()
         self._time_acceleration = time_acceleration
         self._virtual_time: datetime | None = None
+
+    @property
+    def nominal_status(self) -> FeedStatus:
+        return FeedStatus.MOCK
 
     async def connect(self) -> None:
         self._connected = True
@@ -79,3 +83,9 @@ class MockMarketDataProvider(MarketDataProvider):
 
     def _next_volume(self) -> float:
         return round(self._rng.uniform(_MIN_TICK_VOLUME, _MAX_TICK_VOLUME), 3)
+
+    async def fetch_history(self, symbol: Symbol, timeframe: Timeframe, count: int) -> list[Candle]:
+        # Synthetic feed has no historical concept — startup backfill is a
+        # deliberate no-op here; the mock pipeline builds up state live
+        # instead, accelerated by time_acceleration.
+        return []

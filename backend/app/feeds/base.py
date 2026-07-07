@@ -11,7 +11,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
 
-from app.core.constants import Symbol, Timeframe
+from app.core.constants import FeedStatus, Symbol, Timeframe
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +40,14 @@ class Candle:
 class MarketDataProvider(ABC):
     """Adapter contract for a live/mock market data source."""
 
+    @property
+    @abstractmethod
+    def nominal_status(self) -> FeedStatus:
+        """The FeedStatus this provider reports while streaming normally
+        (e.g. MOCK for the synthetic feed, LIVE for a real one). FeedService
+        reads this once at construction — it never hardcodes a provider's
+        healthy-state label itself."""
+
     @abstractmethod
     async def connect(self) -> None:
         """Establish the underlying connection. Idempotent."""
@@ -56,4 +64,14 @@ class MarketDataProvider(ABC):
         `async for tick in provider.stream_ticks(...)`, never `await`.
         Must raise if the first tick is requested before connect() (the
         check runs when iteration starts, not when this method is called).
+        """
+
+    @abstractmethod
+    async def fetch_history(self, symbol: Symbol, timeframe: Timeframe, count: int) -> list[Candle]:
+        """Fetch up to `count` most recent CLOSED candles, oldest-first.
+
+        Used to backfill storage on startup so predictions/signals don't
+        have to wait for enough live candles to accumulate before they can
+        run. A provider with no historical concept (e.g. a pure synthetic
+        feed) may return an empty list — backfill is then a no-op for it.
         """

@@ -85,3 +85,42 @@ async def test_get_latest_returns_none_when_no_candles_exist(session_factory) ->
     async with session_factory() as session:
         latest = await CandleRepository(session).get_latest(Symbol.XAUUSD, Timeframe.M1)
     assert latest is None
+
+
+def _candle(open_time: datetime, close: float) -> Candle:
+    return Candle(
+        symbol=Symbol.XAUUSD,
+        timeframe=Timeframe.M1,
+        open_time=open_time,
+        close_time=open_time,
+        open=close,
+        high=close,
+        low=close,
+        close=close,
+        volume=0.0,
+    )
+
+
+async def test_save_many_if_missing_is_a_noop_for_an_empty_list(session_factory) -> None:
+    async with session_factory() as session:
+        await CandleRepository(session).save_many_if_missing([])
+        candles = await CandleRepository(session).get_recent(Symbol.XAUUSD, Timeframe.M1)
+    assert candles == []
+
+
+async def test_save_many_if_missing_inserts_new_and_skips_duplicate_rows(session_factory) -> None:
+    first = _candle(datetime(2026, 1, 1, 0, 0, tzinfo=UTC), close=100.0)
+    second = _candle(datetime(2026, 1, 1, 0, 1, tzinfo=UTC), close=101.0)
+
+    async with session_factory() as session:
+        await CandleRepository(session).save_many_if_missing([first])
+
+    async with session_factory() as session:
+        # Overlaps with `first` (same symbol/timeframe/open_time) plus one
+        # genuinely new row — the duplicate must be silently skipped, not
+        # raise an IntegrityError, and the new row must still land.
+        await CandleRepository(session).save_many_if_missing([first, second])
+
+    async with session_factory() as session:
+        candles = await CandleRepository(session).get_recent(Symbol.XAUUSD, Timeframe.M1, limit=10)
+    assert [c.close for c in candles] == [100.0, 101.0]

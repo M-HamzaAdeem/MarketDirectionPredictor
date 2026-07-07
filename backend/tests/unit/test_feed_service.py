@@ -46,6 +46,10 @@ class _ScriptedProvider(MarketDataProvider):
         self.connect_count = 0
         self.disconnect_count = 0
 
+    @property
+    def nominal_status(self) -> FeedStatus:
+        return FeedStatus.MOCK
+
     async def connect(self) -> None:
         self.connect_count += 1
 
@@ -59,6 +63,40 @@ class _ScriptedProvider(MarketDataProvider):
         for tick in attempt:
             yield tick
         await asyncio.Event().wait()
+
+    async def fetch_history(self, symbol: Symbol, timeframe: Timeframe, count: int) -> list[Candle]:
+        return []
+
+
+class _HistoryProvider(MarketDataProvider):
+    """A provider that only serves fetch_history — backfill tests don't
+    touch connect/disconnect/stream_ticks. `responses` maps
+    (symbol, timeframe) to either a candle list or an exception to raise."""
+
+    def __init__(self, responses: dict[tuple[Symbol, Timeframe], list[Candle] | Exception]) -> None:
+        self._responses = responses
+        self.fetch_calls: list[tuple[Symbol, Timeframe, int]] = []
+
+    @property
+    def nominal_status(self) -> FeedStatus:
+        return FeedStatus.LIVE
+
+    async def connect(self) -> None:
+        pass
+
+    async def disconnect(self) -> None:
+        pass
+
+    async def stream_ticks(self, symbols: list[Symbol]):
+        raise NotImplementedError
+        yield  # pragma: no cover - makes this an async generator
+
+    async def fetch_history(self, symbol: Symbol, timeframe: Timeframe, count: int) -> list[Candle]:
+        self.fetch_calls.append((symbol, timeframe, count))
+        response = self._responses.get((symbol, timeframe), [])
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 class _FakeSleep:
@@ -181,5 +219,70 @@ async def test_backoff_delay_is_capped_at_the_maximum(session_factory, monkeypat
     await _wait_until(lambda: len(fake_sleep.delays) == 6)
 
     assert fake_sleep.delays == [1.0, 2.0, 4.0, 8.0, 16.0, 30.0]
+
+
+def _history_candle(close: float, open_time: datetime, symbol: Symbol = Symbol.XAUUSD) -> Candle:
+    return Candle(
+        symbol=symbol,
+        timeframe=Timeframe.M15,
+        open_time=open_time,
+        close_time=open_time + timedelta(minutes=15),
+        open=close,
+        high=close + 0.5,
+        low=close - 0.5,
+        close=close,
+        volume=0.0,
+    )
+
+
+async def test_backfill_persists_fetched_history_when_store_is_empty(session_factory) -> None:
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    candles = [_history_candle(100.0 + i, base + timedelta(minutes=15 * i)) for i in range(5)]
+    provider = _HistoryProvider({(Symbol.XAUUSD, Timeframe.M15): candles})
+    settings = Settings(symbols=[Symbol.XAUUSD], timeframes=[Timeframe.M15])
+    service = FeedService(provider, settings, _RecordingBroadcaster(), session_factory, [])
+
+    await service.backfill()
+
+    async with session_factory() as session:
+        stored = await CandleRepository(session).get_recent(Symbol.XAUUSD, Timeframe.M15, limit=10)
+    assert len(stored) == 5
+    assert provider.fetch_calls == [(Symbol.XAUUSD, Timeframe.M15, 100)]
+
+
+async def test_backfill_skips_fetch_when_already_sufficient(session_factory) -> None:
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    async with session_factory() as session:
+        repository = CandleRepository(session)
+        for i in range(100):
+            await repository.save_many_if_missing([_history_candle(100.0 + i, base + timedelta(minutes=15 * i))])
+
+    provider = _HistoryProvider({})  # would raise KeyError-shaped issues if actually called
+    settings = Settings(symbols=[Symbol.XAUUSD], timeframes=[Timeframe.M15])
+    service = FeedService(provider, settings, _RecordingBroadcaster(), session_factory, [])
+
+    await service.backfill()
+
+    assert provider.fetch_calls == []
+
+
+async def test_backfill_one_symbol_failing_does_not_abort_the_rest(session_factory) -> None:
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    good_candles = [_history_candle(100.0, base, symbol=Symbol.EURUSD)]
+    provider = _HistoryProvider(
+        {
+            (Symbol.XAUUSD, Timeframe.M15): RuntimeError("simulated fetch failure"),
+            (Symbol.EURUSD, Timeframe.M15): good_candles,
+        }
+    )
+    settings = Settings(symbols=[Symbol.XAUUSD, Symbol.EURUSD], timeframes=[Timeframe.M15])
+    service = FeedService(provider, settings, _RecordingBroadcaster(), session_factory, [])
+
+    await service.backfill()
+
+    async with session_factory() as session:
+        repository = CandleRepository(session)
+        assert await repository.get_recent(Symbol.XAUUSD, Timeframe.M15, limit=10) == []
+        assert len(await repository.get_recent(Symbol.EURUSD, Timeframe.M15, limit=10)) == 1
 
     await service.stop()

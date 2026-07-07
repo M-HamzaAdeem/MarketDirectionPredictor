@@ -3,11 +3,15 @@ Candle dataclass and the CandleORM table. Reads always return domain
 Candle objects; ORM rows never leak past this repository."""
 
 from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import Symbol, Timeframe
 from app.feeds.base import Candle
 from app.storage.models import CandleORM
+
+# Matches the unique index on CandleORM (ix_candles_symbol_timeframe_open_time).
+_UNIQUE_CANDLE_COLUMNS = ("symbol", "timeframe", "open_time")
 
 
 class CandleRepository:
@@ -28,6 +32,34 @@ class CandleRepository:
                 volume=candle.volume,
             )
         )
+        await self._session.commit()
+
+    async def save_many_if_missing(self, candles: list[Candle]) -> None:
+        """Bulk-inserts candles, silently skipping any that already exist
+        (same symbol/timeframe/open_time). For historical backfill, which
+        may legitimately overlap with previously-backfilled or already
+        live-ingested rows — this isn't hiding a real error, it's the
+        intended idempotent-insert semantics."""
+        if not candles:
+            return
+
+        stmt = sqlite_insert(CandleORM).values(
+            [
+                {
+                    "symbol": candle.symbol.value,
+                    "timeframe": candle.timeframe.value,
+                    "open_time": candle.open_time,
+                    "close_time": candle.close_time,
+                    "open": candle.open,
+                    "high": candle.high,
+                    "low": candle.low,
+                    "close": candle.close,
+                    "volume": candle.volume,
+                }
+                for candle in candles
+            ]
+        )
+        await self._session.execute(stmt.on_conflict_do_nothing(index_elements=_UNIQUE_CANDLE_COLUMNS))
         await self._session.commit()
 
     async def get_recent(self, symbol: Symbol, timeframe: Timeframe, limit: int = 100) -> list[Candle]:

@@ -15,7 +15,7 @@ from app.api.dependencies import get_prediction_engine
 from app.api.routers import candles, config, health, predictions, prices, signals, symbols, websocket
 from app.core.config import get_settings
 from app.core.security_headers import add_security_headers
-from app.feeds.mock_provider import MockMarketDataProvider
+from app.feeds.factory import create_provider
 from app.services.broadcast_service import BroadcastService
 from app.services.connection_manager import ConnectionManager
 from app.services.feed_service import FeedService
@@ -45,13 +45,14 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     ]
 
     feed_service = FeedService(
-        MockMarketDataProvider(time_acceleration=settings.mock_time_acceleration),
+        create_provider(settings),
         settings,
         broadcaster,
         session_factory,
         candle_close_handlers,
     )
     app.state.feed_service = feed_service
+    await feed_service.backfill()
     await feed_service.start()
 
     try:

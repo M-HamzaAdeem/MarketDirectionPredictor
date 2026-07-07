@@ -86,9 +86,29 @@ hard stream failure this handles today; see decisions.md.
    X-Frame-Options, Referrer-Policy, HSTS on every response), a coverage
    gate (`pytest-cov`, `--cov-fail-under=80` wired into `pytest.ini` so a
    bare `pytest` run enforces it), docs sync.
-9. (Later) Real TradingView/broker feed adapters + fallback chain,
-   backtesting engine, ML prediction strategy. Auto-trading remains out of
-   scope permanently, not just deferred.
+9. Real feed adapter(s) + historical backfill (in progress), fallback
+   chain, backtesting engine, ML prediction strategy. Auto-trading remains
+   out of scope permanently, not just deferred.
+   - **Part A (done):** `TwelveDataProvider` — real REST historical
+     candles + real WebSocket live ticks for XAU/USD, EUR/USD, AUD/USD
+     (TradingView has no public API for this per PROJECT.md; OANDA was
+     considered but isn't available in the project owner's region).
+     Selected via `FEED_PROVIDER=twelve_data` + `TWELVE_DATA_API_KEY`
+     through `app/feeds/factory.py`. `FeedService.backfill()` fetches and
+     persists missing historical candles for every configured
+     symbol/timeframe before live streaming starts, so predictions/ICT
+     signals don't need real hours/days of live candles to accumulate
+     first — verified live end-to-end (see decisions.md). Forex/commodity
+     data carries no real volume; `compute_volume_profile` was hardened to
+     return `None` rather than a fabricated POC when volume is all zero.
+   - **Part B (next):** fallback chain (primary feed fails → fall back to
+     another provider, surfaced via `FeedStatus`) + backtesting engine
+     (reuses Part A's historical-fetch path to replay the existing
+     `rule_based`/`signal_builder` strategies against real history).
+   - **Part C (later):** ML prediction strategy (scikit-learn/XGBoost per
+     PROJECT.md), informed by whatever the backtest turns up; plugs in
+     behind the existing `PredictionStrategy` interface, no changes
+     needed elsewhere.
 
 ## Safety rules
 

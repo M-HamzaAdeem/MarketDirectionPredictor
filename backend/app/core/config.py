@@ -10,7 +10,7 @@ from functools import lru_cache
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.core.constants import Symbol, Timeframe
+from app.core.constants import FeedProvider, Symbol, Timeframe
 
 
 class Settings(BaseSettings):
@@ -19,12 +19,15 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
     database_url: str = "sqlite+aiosqlite:///./data/market_predictor.db"
-    feed_provider: str = "mock"
+    feed_provider: FeedProvider = FeedProvider.MOCK
     # Only used by MockMarketDataProvider; a real feed always runs at 1.0
     # (actual market time). 60.0 = 1 real second per virtual minute, so a
     # 1H candle closes in ~60s and a 4H candle in ~4min — practical for
     # local dev/demo without waiting on real wall-clock hours.
     mock_time_acceleration: float = Field(default=60.0, gt=0)
+    # Only used when feed_provider is FeedProvider.TWELVE_DATA. Never logged
+    # or exposed via /config (see app/schemas/config.py) — it's a secret.
+    twelve_data_api_key: str = ""
     cors_origins: list[str] = ["http://localhost:5173"]
     symbols: list[Symbol] = [Symbol.XAUUSD, Symbol.EURUSD, Symbol.AUDUSD]
     timeframes: list[Timeframe] = [Timeframe.M1, Timeframe.M5, Timeframe.M15, Timeframe.H1, Timeframe.H4]
