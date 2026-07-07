@@ -8,6 +8,7 @@ data/raw/
 data/cache/
 *.db
 *.sqlite3
+.coverage
 node_modules/
 dist/
 .DS_Store

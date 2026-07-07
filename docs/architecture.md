@@ -51,9 +51,13 @@ MockMarketDataProvider (async tick generator)
      -> frontend store -> dashboard components re-render
 ```
 
-Feed health is heartbeat-monitored; on stall the status moves to
-`degraded`/`disconnected` and the dashboard reflects that instead of
-silently showing a stale prediction as if it were live.
+If the provider's tick stream ends or raises, `FeedService` reconnects with
+capped exponential backoff, moving `status` to `disconnected` for the
+duration and back once ticks resume — the dashboard reflects that instead
+of silently showing a stale prediction as if it were live. `degraded`
+remains reserved for a future heartbeat/stall detector (ticks still
+arriving but abnormally slow) — a different failure mode from the
+hard stream failure this handles today; see decisions.md.
 
 ## Phases
 
@@ -75,7 +79,13 @@ silently showing a stale prediction as if it were live.
    `Settings` reload path or accepting that some fields (symbols, feed
    provider) always require a restart. Revisit once backtesting (Phase 9)
    creates real demand for adjusting thresholds without redeploying.
-8. Hardening — reconnect/backoff, security pass, coverage gate, docs sync.
+8. Hardening — reconnect/backoff (`FeedService` retries a failed/ended tick
+   stream with capped exponential backoff, surfacing `FeedStatus.DISCONNECTED`
+   for the duration; the frontend's WebSocket hook does the same on its
+   side), a security headers pass (CSP, X-Content-Type-Options,
+   X-Frame-Options, Referrer-Policy, HSTS on every response), a coverage
+   gate (`pytest-cov`, `--cov-fail-under=80` wired into `pytest.ini` so a
+   bare `pytest` run enforces it), docs sync.
 9. (Later) Real TradingView/broker feed adapters + fallback chain,
    backtesting engine, ML prediction strategy. Auto-trading remains out of
    scope permanently, not just deferred.

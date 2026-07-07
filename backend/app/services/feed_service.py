@@ -8,6 +8,13 @@ list at composition time in main.py, not touching this class).
 
 Thin orchestration only — the aggregation rules live in CandleAggregator,
 persistence lives in CandleRepository; each handler is tested independently.
+
+If the provider's tick stream ends or raises (connection drop, transient
+provider failure), `_run` doesn't give up — it reconnects with exponential
+backoff, broadcasting FeedStatus.DISCONNECTED for the duration and back to
+the provider's nominal status once ticks resume. `MockMarketDataProvider`
+never actually fails today, but a real feed adapter will, and this is the
+seam that handles it without every provider needing its own retry logic.
 """
 
 import asyncio
@@ -25,6 +32,10 @@ from app.storage.repositories.candle_repository import CandleRepository
 
 logger = logging.getLogger(__name__)
 
+_INITIAL_RECONNECT_DELAY_SECONDS = 1.0
+_MAX_RECONNECT_DELAY_SECONDS = 30.0
+_RECONNECT_BACKOFF_MULTIPLIER = 2.0
+
 
 class FeedService:
     def __init__(
@@ -34,6 +45,7 @@ class FeedService:
         broadcaster: BroadcastService,
         session_factory: async_sessionmaker[AsyncSession],
         candle_close_handlers: list[CandleCloseHandler],
+        nominal_status: FeedStatus = FeedStatus.MOCK,
     ) -> None:
         self._provider = provider
         self._settings = settings
@@ -43,9 +55,12 @@ class FeedService:
         self._aggregator = CandleAggregator(settings.timeframes)
         self._latest_prices: dict[Symbol, Tick] = {}
         self._task: asyncio.Task[None] | None = None
-        # Only MockMarketDataProvider exists today, so status is fixed;
-        # revisit once a provider that can actually degrade/disconnect exists.
-        self.status: FeedStatus = FeedStatus.MOCK
+        # The status the feed reports when the provider is streaming
+        # normally — MOCK for MockMarketDataProvider, LIVE for a real feed.
+        # `status` itself moves to DISCONNECTED while reconnecting and back
+        # to this once the stream recovers.
+        self._nominal_status = nominal_status
+        self.status: FeedStatus = nominal_status
 
     async def start(self) -> None:
         await self._provider.connect()
@@ -65,16 +80,52 @@ class FeedService:
         return self._latest_prices.get(symbol)
 
     async def _run(self) -> None:
-        try:
-            async for tick in self._provider.stream_ticks(self._settings.symbols):
-                self._latest_prices[tick.symbol] = tick
-                await self._broadcaster.broadcast_price(tick)
-                for candle in self._aggregator.ingest(tick):
-                    await self._handle_closed_candle(candle)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Feed loop terminated unexpectedly")
+        delay = _INITIAL_RECONNECT_DELAY_SECONDS
+        reconnecting = False
+
+        while True:
+            try:
+                if reconnecting:
+                    await self._provider.disconnect()
+                    await self._provider.connect()
+
+                async for tick in self._provider.stream_ticks(self._settings.symbols):
+                    # Backoff only resets once a tick actually arrives, not
+                    # as soon as connect() succeeds — a provider that
+                    # reconnects but yields no data isn't actually healthy
+                    # from this pipeline's perspective (no ticks means no
+                    # candles), so it's correct for backoff to keep growing
+                    # (up to the cap) through repeated empty sessions.
+                    if reconnecting:
+                        reconnecting = False
+                        delay = _INITIAL_RECONNECT_DELAY_SECONDS
+                        await self._set_status(self._nominal_status)
+
+                    self._latest_prices[tick.symbol] = tick
+                    await self._broadcaster.broadcast_price(tick)
+                    for candle in self._aggregator.ingest(tick):
+                        await self._handle_closed_candle(candle)
+
+                # The provider's contract is to stream until disconnected;
+                # the generator ending on its own is an unexpected
+                # disruption too, not a clean shutdown (stop() cancels the
+                # task instead of waiting for the generator to return).
+                # Caught immediately below like any other stream failure.
+                raise RuntimeError("Tick stream ended unexpectedly")
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Feed stream failed; reconnecting in %.1fs", delay)
+                reconnecting = True
+                await self._set_status(FeedStatus.DISCONNECTED)
+                await asyncio.sleep(delay)
+                delay = min(delay * _RECONNECT_BACKOFF_MULTIPLIER, _MAX_RECONNECT_DELAY_SECONDS)
+
+    async def _set_status(self, status: FeedStatus) -> None:
+        if status == self.status:
+            return
+        self.status = status
+        await self._broadcaster.broadcast_feed_status(status)
 
     async def _handle_closed_candle(self, candle: Candle) -> None:
         # Isolated from _run's loop: a persistence or handler failure on one

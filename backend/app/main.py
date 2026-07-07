@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.dependencies import get_prediction_engine
 from app.api.routers import candles, config, health, predictions, prices, signals, symbols, websocket
 from app.core.config import get_settings
+from app.core.security_headers import add_security_headers
 from app.feeds.mock_provider import MockMarketDataProvider
 from app.services.broadcast_service import BroadcastService
 from app.services.connection_manager import ConnectionManager
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Market Direction Predictor", version="0.1.0", lifespan=_lifespan)
     app.state.connection_manager = ConnectionManager()
 
+    app.middleware("http")(add_security_headers)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

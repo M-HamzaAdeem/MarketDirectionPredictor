@@ -3,12 +3,13 @@ import { useMarketStore } from '../store/marketStore'
 import type { WebSocketMessage } from '../types/websocket'
 
 const WS_URL: string = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8000/ws'
-const RECONNECT_DELAY_MS = 2000
+const INITIAL_RECONNECT_DELAY_MS = 1000
+const MAX_RECONNECT_DELAY_MS = 30000
+const RECONNECT_BACKOFF_MULTIPLIER = 2
 
 /** Connects to the backend's broadcast-only /ws endpoint and dispatches
- * every message into the market store. Reconnects on a fixed delay if the
- * connection drops — exponential backoff is Phase 8 (hardening) scope,
- * not needed for this MVP. */
+ * every message into the market store. Reconnects with exponential backoff
+ * (capped, reset on a successful connection) if the connection drops. */
 export function useMarketSocket(): void {
   const setFeedStatus = useMarketStore((state) => state.setFeedStatus)
   const setPrice = useMarketStore((state) => state.setPrice)
@@ -18,6 +19,7 @@ export function useMarketSocket(): void {
   useEffect(() => {
     let socket: WebSocket | null = null
     let reconnectTimer: number | undefined
+    let reconnectDelay = INITIAL_RECONNECT_DELAY_MS
     let cancelled = false
 
     function handleMessage(event: MessageEvent<string>): void {
@@ -45,6 +47,7 @@ export function useMarketSocket(): void {
     }
 
     function detach(target: WebSocket): void {
+      target.onopen = null
       target.onmessage = null
       target.onclose = null
       target.onerror = null
@@ -52,6 +55,9 @@ export function useMarketSocket(): void {
 
     function connect(): void {
       socket = new WebSocket(WS_URL)
+      socket.onopen = () => {
+        reconnectDelay = INITIAL_RECONNECT_DELAY_MS
+      }
       socket.onmessage = handleMessage
       socket.onerror = () => {
         // The browser follows this with onclose, which schedules the
@@ -61,7 +67,8 @@ export function useMarketSocket(): void {
       }
       socket.onclose = () => {
         if (!cancelled) {
-          reconnectTimer = window.setTimeout(connect, RECONNECT_DELAY_MS)
+          reconnectTimer = window.setTimeout(connect, reconnectDelay)
+          reconnectDelay = Math.min(reconnectDelay * RECONNECT_BACKOFF_MULTIPLIER, MAX_RECONNECT_DELAY_MS)
         }
       }
     }
