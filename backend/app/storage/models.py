@@ -73,3 +73,24 @@ class SignalORM(Base):
     opened_at: Mapped[datetime] = mapped_column(UTCDateTime)
     closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     realized_rr: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class BacktestRunORM(Base):
+    """One CLI backtest invocation's result (app/backtesting/cli.py) —
+    append-only, like CandleORM/PredictionORM: a run is a point-in-time
+    fact about how a strategy performed over some historical range, never
+    updated after being saved. `summary` is JSON-encoded, the same pattern
+    as SignalORM.details, since its shape differs by `kind` (signal vs.
+    prediction backtests report different stats)."""
+
+    __tablename__ = "backtest_runs"
+    __table_args__ = (Index("ix_backtest_runs_symbol_kind", "symbol", "kind"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    symbol: Mapped[str] = mapped_column(String(16))
+    timeframe: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    range_start: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    range_end: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    summary: Mapped[str] = mapped_column(Text)
+    run_at: Mapped[datetime] = mapped_column(UTCDateTime)

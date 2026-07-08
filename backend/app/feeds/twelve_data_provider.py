@@ -18,6 +18,15 @@ The `time_series` endpoint's `datetime` field is NOT UTC by default (it's
 "Exchange" local time, confirmed empirically — the same candle came back
 with a ~10 hour offset depending on the `timezone` param), so every
 request explicitly passes `timezone=UTC`. Never drop that parameter.
+
+The API key goes in an `Authorization: apikey <key>` header for REST calls
+(confirmed working), never a query parameter — httpx logs full request
+URLs at INFO level, and a query-param key would leak into those logs (hit
+this for real running the backtest CLI; see decisions.md). The WebSocket
+unfortunately has no header-auth equivalent — Twelve Data's server
+rejects the handshake without `?apikey=` in the URL (confirmed) — so that
+one URL is the one place the key still appears in a string; nothing in
+this codebase logs it.
 """
 
 import asyncio
@@ -112,8 +121,8 @@ class TwelveDataProvider(MarketDataProvider):
                 "interval": _TIMEFRAME_TO_INTERVAL[timeframe],
                 "outputsize": count,
                 "timezone": "UTC",
-                "apikey": self._api_key,
             },
+            headers={"Authorization": f"apikey {self._api_key}"},
         )
         response.raise_for_status()
         payload = response.json()

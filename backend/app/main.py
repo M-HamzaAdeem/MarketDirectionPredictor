@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.dependencies import get_prediction_engine
-from app.api.routers import candles, config, health, predictions, prices, signals, symbols, websocket
+from app.api.routers import backtests, candles, config, health, predictions, prices, signals, symbols, websocket
 from app.core.config import get_settings
 from app.core.security_headers import add_security_headers
 from app.feeds.factory import create_provider
@@ -82,6 +82,7 @@ def create_app() -> FastAPI:
     app.include_router(candles.router)
     app.include_router(predictions.router)
     app.include_router(signals.router)
+    app.include_router(backtests.router)
     app.include_router(websocket.router)
     return app
 

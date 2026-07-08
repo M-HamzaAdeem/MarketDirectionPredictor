@@ -13,7 +13,8 @@ def _time_series_response(request: httpx.Request) -> httpx.Response:
     assert request.url.path == "/time_series"
     params = request.url.params
     assert params["timezone"] == "UTC"
-    assert params["apikey"] == "test-key"
+    assert "apikey" not in params  # must never be a query param -- httpx logs full URLs at INFO
+    assert request.headers["Authorization"] == "apikey test-key"
     assert params["symbol"] == "XAU/USD"
     assert params["interval"] == "15min"
 

@@ -101,19 +101,31 @@ hard stream failure this handles today; see decisions.md.
      first — verified live end-to-end (see decisions.md). Forex/commodity
      data carries no real volume; `compute_volume_profile` was hardened to
      return `None` rather than a fabricated POC when volume is all zero.
-   - **Part B (fallback chain done, backtesting engine next):**
-     `FallbackMarketDataProvider` wraps `[TwelveDataProvider,
-     MockMarketDataProvider]` whenever a real feed is selected — falls
-     back to the mock feed immediately (inside the same `stream_ticks()`
-     call, not waiting out `FeedService`'s own reconnect backoff) the
-     moment the primary fails, surfaced via `FeedStatus` (`nominal_status`
-     is now read live from the active provider, not cached); periodically
-     retries the primary via a bounded fallback duration. Verified live:
-     booting against the real Twelve Data account reports `feed_status:
-     "live"`, confirming the wrapper delegates correctly when the primary
-     is healthy. Backtesting engine still to do — reuses Part A's
-     historical-fetch path to replay the existing `rule_based`/
-     `signal_builder` strategies against real history.
+   - **Part B (done):** `FallbackMarketDataProvider` wraps
+     `[TwelveDataProvider, MockMarketDataProvider]` whenever a real feed is
+     selected — falls back to the mock feed immediately (inside the same
+     `stream_ticks()` call, not waiting out `FeedService`'s own reconnect
+     backoff) the moment the primary fails, surfaced via `FeedStatus`
+     (`nominal_status` is now read live from the active provider, not
+     cached); periodically retries the primary via a bounded fallback
+     duration. Verified live: booting against the real Twelve Data account
+     reports `feed_status: "live"`, confirming the wrapper delegates
+     correctly when the primary is healthy. The backtesting engine
+     (`app/backtesting/`) walk-forward replays `build_signal()` and the
+     rule-based `PredictionEngine` against real historical data, reusing
+     both completely unmodified — only the historical windowing is new —
+     so a backtested outcome is graded by the exact same rule a live one
+     is. `resolve_signal()` was extracted from `SignalTracker` into a
+     shared pure function for this reason. Run via
+     `python -m app.backtesting.cli [--symbol XAUUSD] [--kind signal|prediction|both]`,
+     which fetches history directly via a bare `TwelveDataProvider` (not
+     the fallback-wrapped one — a backtest must fail loudly on a real
+     fetch problem, not silently substitute the mock feed's much shorter
+     synthetic history), prints a summary, and persists it
+     (`GET /backtests` to review past runs later). A dedicated regression
+     test proves the walk-forward windowing doesn't leak future candles
+     into an earlier simulated point — the one property that actually
+     matters for a backtest to mean anything.
    - **Part C (later):** ML prediction strategy (scikit-learn/XGBoost per
      PROJECT.md), informed by whatever the backtest turns up; plugs in
      behind the existing `PredictionStrategy` interface, no changes

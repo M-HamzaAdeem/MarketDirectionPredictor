@@ -17,9 +17,12 @@ from app.services.broadcast_service import BroadcastService
 from app.storage.repositories.candle_repository import CandleRepository
 from app.storage.repositories.signal_repository import SignalRepository
 
-_CANDLE_WINDOW_4H = 60
-_CANDLE_WINDOW_1H = 100
-_CANDLE_WINDOW_15M = 20
+# Public, not underscore-prefixed: app/backtesting/signal_backtest.py is a
+# second real reader, replaying build_signal() with these exact windows so
+# backtested behavior can't silently diverge from live.
+CANDLE_WINDOW_4H = 60
+CANDLE_WINDOW_1H = 100
+CANDLE_WINDOW_15M = 20
 
 
 class SignalService:
@@ -33,10 +36,10 @@ class SignalService:
 
         async with self._session_factory() as session:
             candle_repository = CandleRepository(session)
-            candles_4h = await candle_repository.get_recent(candle.symbol, Timeframe.H4, limit=_CANDLE_WINDOW_4H)
-            candles_1h = await candle_repository.get_recent(candle.symbol, Timeframe.H1, limit=_CANDLE_WINDOW_1H)
+            candles_4h = await candle_repository.get_recent(candle.symbol, Timeframe.H4, limit=CANDLE_WINDOW_4H)
+            candles_1h = await candle_repository.get_recent(candle.symbol, Timeframe.H1, limit=CANDLE_WINDOW_1H)
             candles_15m = await candle_repository.get_recent(
-                candle.symbol, Timeframe.M15, limit=_CANDLE_WINDOW_15M
+                candle.symbol, Timeframe.M15, limit=CANDLE_WINDOW_15M
             )
 
             signal = build_signal(candle.symbol, candles_4h, candles_1h, candles_15m)

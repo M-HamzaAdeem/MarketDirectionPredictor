@@ -1,14 +1,12 @@
 """Watches OPEN signals forward in time against incoming candles of their
-own entry_timeframe, resolving each to WIN (target hit first), LOSS (stop
-hit first), or EXPIRED (neither hit within the timeout window). This is
-what turns a Signal from a plan into a graded, auditable outcome — the
-"end result" PROJECT.md requires alongside every signal's reasoning.
-
-If a single candle's range touches BOTH the stop and the target (only
-possible at candle-level granularity, since v1 has no tick-by-tick replay
-for already-closed candles), the stop is assumed to have been hit first —
-the conservative, worst-case read, consistent with never overstating a win.
-"""
+own entry_timeframe, resolving each to WIN/LOSS/EXPIRED via
+`prediction/signal_resolution.py`'s pure `resolve_signal` — the live path
+here just fetches OPEN signals, calls that shared function, and persists +
+broadcasts the outcome. This is what turns a Signal from a plan into a
+graded, auditable outcome — the "end result" PROJECT.md requires alongside
+every signal's reasoning. The backtest engine (`app/backtesting/`) calls
+the same `resolve_signal` against historical candles, so backtested
+outcomes are graded identically to live ones."""
 
 import logging
 from dataclasses import replace
@@ -16,9 +14,9 @@ from datetime import timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.constants import Direction
 from app.feeds.base import Candle
-from app.prediction.signal import Signal, SignalStatus
+from app.prediction.signal import Signal
+from app.prediction.signal_resolution import resolve_signal
 from app.services.broadcast_service import BroadcastService
 from app.storage.repositories.signal_repository import SignalRepository
 
@@ -47,7 +45,7 @@ class SignalTracker:
             for signal in open_signals:
                 if signal.entry_timeframe != candle.timeframe:
                     continue
-                outcome = self._resolve(signal, candle)
+                outcome = resolve_signal(signal, candle, self._expiry)
                 if outcome is not None:
                     status, realized_rr = outcome
                     await repository.update_outcome(signal.id, status, candle.close_time, realized_rr)
@@ -62,22 +60,3 @@ class SignalTracker:
                 await self._broadcaster.broadcast_signal(signal)
             except Exception:
                 logger.exception("Failed to broadcast resolution for signal %s", signal.id)
-
-    def _resolve(self, signal: Signal, candle: Candle) -> tuple[SignalStatus, float] | None:
-        if self._stop_hit(signal, candle):
-            return SignalStatus.LOSS, -1.0
-        if self._target_hit(signal, candle):
-            return SignalStatus.WIN, signal.risk_reward
-        if candle.close_time - signal.opened_at > self._expiry:
-            return SignalStatus.EXPIRED, 0.0
-        return None
-
-    def _stop_hit(self, signal: Signal, candle: Candle) -> bool:
-        if signal.direction == Direction.BULLISH:
-            return candle.low <= signal.stop
-        return candle.high >= signal.stop
-
-    def _target_hit(self, signal: Signal, candle: Candle) -> bool:
-        if signal.direction == Direction.BULLISH:
-            return candle.high >= signal.target
-        return candle.low <= signal.target
