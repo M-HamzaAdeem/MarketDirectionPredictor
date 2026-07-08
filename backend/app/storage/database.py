@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import get_settings
+from app.storage.migrations import add_missing_columns
 
 
 class Base(DeclarativeBase):
@@ -41,9 +42,20 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 
 async def init_models() -> None:
+    # Base.metadata is only populated once every module defining an ORM
+    # class has actually been imported somewhere in the process — this
+    # import guarantees that regardless of what else has (or hasn't) been
+    # imported yet, rather than relying on import order elsewhere in the
+    # app to have already pulled models.py in as a side effect.
+    from app.storage import models  # noqa: F401
+
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # create_all only creates missing tables; this adds any column an
+        # existing table is missing, so a model gaining a field never again
+        # requires deleting the whole database — see app/storage/migrations.py.
+        await add_missing_columns(conn, Base)
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
