@@ -101,10 +101,19 @@ hard stream failure this handles today; see decisions.md.
      first — verified live end-to-end (see decisions.md). Forex/commodity
      data carries no real volume; `compute_volume_profile` was hardened to
      return `None` rather than a fabricated POC when volume is all zero.
-   - **Part B (next):** fallback chain (primary feed fails → fall back to
-     another provider, surfaced via `FeedStatus`) + backtesting engine
-     (reuses Part A's historical-fetch path to replay the existing
-     `rule_based`/`signal_builder` strategies against real history).
+   - **Part B (fallback chain done, backtesting engine next):**
+     `FallbackMarketDataProvider` wraps `[TwelveDataProvider,
+     MockMarketDataProvider]` whenever a real feed is selected — falls
+     back to the mock feed immediately (inside the same `stream_ticks()`
+     call, not waiting out `FeedService`'s own reconnect backoff) the
+     moment the primary fails, surfaced via `FeedStatus` (`nominal_status`
+     is now read live from the active provider, not cached); periodically
+     retries the primary via a bounded fallback duration. Verified live:
+     booting against the real Twelve Data account reports `feed_status:
+     "live"`, confirming the wrapper delegates correctly when the primary
+     is healthy. Backtesting engine still to do — reuses Part A's
+     historical-fetch path to replay the existing `rule_based`/
+     `signal_builder` strategies against real history.
    - **Part C (later):** ML prediction strategy (scikit-learn/XGBoost per
      PROJECT.md), informed by whatever the backtest turns up; plugs in
      behind the existing `PredictionStrategy` interface, no changes

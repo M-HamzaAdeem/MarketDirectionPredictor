@@ -45,8 +45,9 @@ class MarketDataProvider(ABC):
     def nominal_status(self) -> FeedStatus:
         """The FeedStatus this provider reports while streaming normally
         (e.g. MOCK for the synthetic feed, LIVE for a real one). FeedService
-        reads this once at construction — it never hardcodes a provider's
-        healthy-state label itself."""
+        reads this live, not just once at construction — a composite
+        provider (e.g. a fallback chain) may report a different value
+        depending on which underlying provider is currently active."""
 
     @abstractmethod
     async def connect(self) -> None:

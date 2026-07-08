@@ -12,9 +12,13 @@ persistence lives in CandleRepository; each handler is tested independently.
 If the provider's tick stream ends or raises (connection drop, transient
 provider failure), `_run` doesn't give up — it reconnects with exponential
 backoff, broadcasting FeedStatus.DISCONNECTED for the duration and back to
-the provider's nominal status once ticks resume. `MockMarketDataProvider`
-never actually fails today, but a real feed adapter will, and this is the
-seam that handles it without every provider needing its own retry logic.
+the provider's nominal status once ticks resume. `nominal_status` is read
+fresh from the provider each time (never cached), since a composite
+provider like `FallbackMarketDataProvider` reports a different nominal
+status depending on which underlying provider is currently active.
+`MockMarketDataProvider` never actually fails today, but a real feed
+adapter will, and this is the seam that handles it without every provider
+needing its own retry logic.
 
 `backfill()` fetches and persists missing historical candles for every
 configured symbol/timeframe via the provider's `fetch_history()` before
@@ -61,11 +65,9 @@ class FeedService:
         self._aggregator = CandleAggregator(settings.timeframes)
         self._latest_prices: dict[Symbol, Tick] = {}
         self._task: asyncio.Task[None] | None = None
-        # The status the feed reports when the provider is streaming
-        # normally — MOCK for MockMarketDataProvider, LIVE for a real feed.
-        # `status` itself moves to DISCONNECTED while reconnecting and back
-        # to this once the stream recovers.
-        self._nominal_status = provider.nominal_status
+        # `status` moves to DISCONNECTED while reconnecting and back to
+        # `self._provider.nominal_status` (read live, not cached) once the
+        # stream recovers.
         self.status: FeedStatus = provider.nominal_status
 
     async def backfill(self) -> None:
@@ -126,7 +128,7 @@ class FeedService:
                     if reconnecting:
                         reconnecting = False
                         delay = _INITIAL_RECONNECT_DELAY_SECONDS
-                        await self._set_status(self._nominal_status)
+                        await self._set_status(self._provider.nominal_status)
 
                     self._latest_prices[tick.symbol] = tick
                     await self._broadcaster.broadcast_price(tick)
