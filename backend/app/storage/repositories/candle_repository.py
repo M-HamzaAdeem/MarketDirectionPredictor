@@ -19,19 +19,27 @@ class CandleRepository:
         self._session = session
 
     async def save(self, candle: Candle) -> None:
-        self._session.add(
-            CandleORM(
-                symbol=candle.symbol.value,
-                timeframe=candle.timeframe.value,
-                open_time=candle.open_time,
-                close_time=candle.close_time,
-                open=candle.open,
-                high=candle.high,
-                low=candle.low,
-                close=candle.close,
-                volume=candle.volume,
-            )
+        """Idempotent on (symbol, timeframe, open_time): if this exact
+        candle boundary is already stored, this is a no-op rather than an
+        IntegrityError. A live provider re-delivering the same boundary
+        (e.g. a brief overlap around a reconnect/restart) is a real,
+        observed occurrence, not a coding bug each time it happens — the
+        caller (FeedService) still runs prediction/signal handlers
+        afterward regardless, since those must react to every candle
+        close whether or not this particular call was the one that
+        persisted it."""
+        stmt = sqlite_insert(CandleORM).values(
+            symbol=candle.symbol.value,
+            timeframe=candle.timeframe.value,
+            open_time=candle.open_time,
+            close_time=candle.close_time,
+            open=candle.open,
+            high=candle.high,
+            low=candle.low,
+            close=candle.close,
+            volume=candle.volume,
         )
+        await self._session.execute(stmt.on_conflict_do_nothing(index_elements=_UNIQUE_CANDLE_COLUMNS))
         await self._session.commit()
 
     async def save_many_if_missing(self, candles: list[Candle]) -> None:

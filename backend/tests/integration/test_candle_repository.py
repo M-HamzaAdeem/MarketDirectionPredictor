@@ -81,6 +81,32 @@ async def test_get_latest_returns_the_most_recent_domain_candle(session_factory)
     assert latest.close == 101.5
 
 
+async def test_save_is_idempotent_on_a_duplicate_symbol_timeframe_open_time(session_factory) -> None:
+    # A live provider re-delivering the same candle boundary (e.g. around a
+    # reconnect) must not raise or skip the caller's downstream handling —
+    # see the idempotent-live-candle-save decision.
+    candle = Candle(
+        symbol=Symbol.XAUUSD,
+        timeframe=Timeframe.M1,
+        open_time=datetime(2026, 1, 1, tzinfo=UTC),
+        close_time=datetime(2026, 1, 1, 0, 1, tzinfo=UTC),
+        open=100.0,
+        high=101.0,
+        low=99.0,
+        close=100.5,
+        volume=0.0,
+    )
+
+    async with session_factory() as session:
+        repository = CandleRepository(session)
+        await repository.save(candle)
+        await repository.save(candle)  # must not raise
+
+    async with session_factory() as session:
+        candles = await CandleRepository(session).get_recent(Symbol.XAUUSD, Timeframe.M1)
+    assert len(candles) == 1
+
+
 async def test_get_latest_returns_none_when_no_candles_exist(session_factory) -> None:
     async with session_factory() as session:
         latest = await CandleRepository(session).get_latest(Symbol.XAUUSD, Timeframe.M1)
