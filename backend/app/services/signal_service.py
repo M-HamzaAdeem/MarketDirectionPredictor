@@ -35,6 +35,14 @@ class SignalService:
             return
 
         async with self._session_factory() as session:
+            signal_repository = SignalRepository(session)
+            # One open signal per symbol at a time: build_signal() re-derives
+            # the same still-open setup on every 15m close for as long as its
+            # 1H bias/structure hasn't changed, so without this guard the
+            # same setup gets saved again as a "new" duplicate signal.
+            if await signal_repository.get_open(candle.symbol):
+                return
+
             candle_repository = CandleRepository(session)
             candles_4h = await candle_repository.get_recent(candle.symbol, Timeframe.H4, limit=CANDLE_WINDOW_4H)
             candles_1h = await candle_repository.get_recent(candle.symbol, Timeframe.H1, limit=CANDLE_WINDOW_1H)
@@ -46,6 +54,6 @@ class SignalService:
             if signal is None:
                 return
 
-            saved = await SignalRepository(session).save(signal)
+            saved = await signal_repository.save(signal)
 
         await self._broadcaster.broadcast_signal(saved)

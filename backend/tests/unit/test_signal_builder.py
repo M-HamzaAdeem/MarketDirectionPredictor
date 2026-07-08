@@ -23,18 +23,26 @@ def _timestamps(n: int) -> list[datetime]:
     return [base + timedelta(hours=i) for i in range(n)]
 
 
-def _candle(low: float, high: float, timeframe: Timeframe = Timeframe.M15) -> Candle:
+def _candle(
+    low: float,
+    high: float,
+    timeframe: Timeframe = Timeframe.M15,
+    close_time: datetime = datetime(2026, 1, 1, 0, 15, tzinfo=UTC),
+) -> Candle:
     return Candle(
         symbol=Symbol.XAUUSD,
         timeframe=timeframe,
-        open_time=datetime(2026, 1, 1, tzinfo=UTC),
-        close_time=datetime(2026, 1, 1, 0, 15, tzinfo=UTC),
+        open_time=close_time - timedelta(minutes=15),
+        close_time=close_time,
         open=(low + high) / 2,
         high=high,
         low=low,
         close=(low + high) / 2,
         volume=0.0,
     )
+
+
+_EPOCH = datetime(2020, 1, 1, tzinfo=UTC)  # before every fixture candle; imposes no boundary
 
 
 # --- _find_leg_end ---
@@ -144,13 +152,35 @@ def test_find_target_returns_none_when_no_opposing_liquidity_exists() -> None:
 
 def test_check_entry_finds_the_most_recent_candle_that_taps_the_zone() -> None:
     candles = [_candle(90.0, 95.0), _candle(98.0, 102.0), _candle(105.0, 110.0)]
-    tap = _check_entry(entry_low=99.0, entry_high=101.0, candles=candles)
+    tap = _check_entry(entry_low=99.0, entry_high=101.0, candles=candles, earliest_entry_time=_EPOCH)
     assert tap is candles[1]
 
 
 def test_check_entry_returns_none_when_no_candle_taps_the_zone() -> None:
     candles = [_candle(90.0, 95.0), _candle(105.0, 110.0)]
-    assert _check_entry(entry_low=99.0, entry_high=101.0, candles=candles) is None
+    assert _check_entry(entry_low=99.0, entry_high=101.0, candles=candles, earliest_entry_time=_EPOCH) is None
+
+
+def test_check_entry_ignores_a_tap_that_closed_before_the_zone_was_valid() -> None:
+    # The zone (an OTE/POI retracement level) only becomes meaningful once
+    # the leg that defines it has finished forming — a candle passing
+    # through that price range before then is the original impulsive move,
+    # not a genuine return to a level that didn't exist yet.
+    zone_confirmed_at = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    stale_tap = _candle(99.0, 101.0, close_time=datetime(2026, 1, 1, 0, 15, tzinfo=UTC))
+
+    tap = _check_entry(entry_low=99.0, entry_high=101.0, candles=[stale_tap], earliest_entry_time=zone_confirmed_at)
+
+    assert tap is None
+
+
+def test_check_entry_accepts_a_tap_after_the_zone_was_confirmed() -> None:
+    zone_confirmed_at = datetime(2026, 1, 1, tzinfo=UTC)
+    valid_tap = _candle(99.0, 101.0, close_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+
+    tap = _check_entry(entry_low=99.0, entry_high=101.0, candles=[valid_tap], earliest_entry_time=zone_confirmed_at)
+
+    assert tap is valid_tap
 
 
 # --- build_signal (full pipeline, end to end) ---
@@ -191,7 +221,9 @@ def _bullish_1h_candles() -> list[Candle]:
 def test_build_signal_produces_a_bullish_signal_meeting_the_rr_floor() -> None:
     candles_1h = _bullish_1h_candles()
     candles_4h = candles_1h  # same directional pattern serves as the HTF bias source
-    candles_15m = [_candle(97.0, 99.0, timeframe=Timeframe.M15)]  # taps the [97.5, 98.322] entry zone
+    # Taps the [97.5, 98.322] entry zone, closing well after the last 1h
+    # candle (hour 18) so the tap postdates the leg that defines the zone.
+    candles_15m = [_candle(97.0, 99.0, timeframe=Timeframe.M15, close_time=datetime(2026, 1, 1, 19, 0, tzinfo=UTC))]
 
     signal = build_signal(Symbol.XAUUSD, candles_4h, candles_1h, candles_15m)
 
@@ -217,6 +249,7 @@ def test_build_reason_reflects_bos_not_hardcoded_choch() -> None:
         ote=compute_ote_zone(89.0, 100.0, Direction.BULLISH),
         volume_profile_poc=None,
         confirming_event=StructureEvent.BOS,
+        earliest_entry_time=_EPOCH,
     )
 
     reason = _build_reason(setup, risk_reward=2.0)
@@ -236,3 +269,16 @@ def test_build_signal_returns_none_when_price_never_taps_the_entry_zone() -> Non
 def test_build_signal_returns_none_with_no_bias() -> None:
     flat_candles = [_candle(100.0, 101.0, timeframe=Timeframe.H4) for _ in range(10)]
     assert build_signal(Symbol.XAUUSD, flat_candles, flat_candles, flat_candles) is None
+
+
+def test_build_signal_rejects_a_tap_that_closed_before_the_leg_completed() -> None:
+    # Regression for the stale-entry-tap bug: a 15m candle whose price range
+    # overlaps the entry zone but that closed hours before the sweep/break/
+    # leg-end that defines the zone (hour 2, well before the sweep at hour
+    # 9-10) must not count as a valid tap, even though its range overlaps
+    # [97.5, 98.322] — that zone didn't exist yet when this candle closed.
+    candles_1h = _bullish_1h_candles()
+    candles_4h = candles_1h
+    early_tap = _candle(97.0, 99.0, timeframe=Timeframe.M15, close_time=datetime(2026, 1, 1, 2, 0, tzinfo=UTC))
+
+    assert build_signal(Symbol.XAUUSD, candles_4h, candles_1h, [early_tap]) is None

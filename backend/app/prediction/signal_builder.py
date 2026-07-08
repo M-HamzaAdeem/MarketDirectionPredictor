@@ -12,6 +12,7 @@ signals" requirement.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 
 import pandas as pd
 
@@ -51,6 +52,12 @@ class _Setup:
     ote: OteZone
     volume_profile_poc: float | None
     confirming_event: StructureEvent
+    # The OTE zone is only known once leg_end is in — this is that 1H
+    # candle's close_time. A 15m "tap" that closed before this is just the
+    # original impulsive move passing through the zone's price range before
+    # the zone existed, not a genuine retracement into it; see
+    # decisions.md's stale-entry-tap entry.
+    earliest_entry_time: datetime
 
 
 def build_signal(
@@ -68,7 +75,7 @@ def build_signal(
     if setup is None:
         return None
 
-    tap_candle = _check_entry(setup.entry_low, setup.entry_high, candles_15m)
+    tap_candle = _check_entry(setup.entry_low, setup.entry_high, candles_15m, setup.earliest_entry_time)
     if tap_candle is None:
         return None
 
@@ -183,6 +190,7 @@ def _find_setup(bias: Direction, candles: list[Candle]) -> _Setup | None:
         ote=ote,
         volume_profile_poc=volume_profile.poc_price if volume_profile else None,
         confirming_event=confirming_break.event,
+        earliest_entry_time=candles[leg_end_index].close_time,
     )
 
 
@@ -263,8 +271,12 @@ def _find_target(
     return max((p.price for p in beyond), default=None)
 
 
-def _check_entry(entry_low: float, entry_high: float, candles: list[Candle]) -> Candle | None:
+def _check_entry(
+    entry_low: float, entry_high: float, candles: list[Candle], earliest_entry_time: datetime
+) -> Candle | None:
     for candle in reversed(candles):
+        if candle.close_time <= earliest_entry_time:
+            break  # candles are ascending order; nothing earlier can qualify either
         if candle.low <= entry_high and candle.high >= entry_low:
             return candle
     return None
@@ -287,4 +299,5 @@ def _build_details(setup: _Setup) -> dict[str, float | str | None]:
         "swept_level": setup.swept_level,
         "volume_profile_poc": setup.volume_profile_poc,
         "confirming_event": setup.confirming_event.value,
+        "earliest_entry_time": setup.earliest_entry_time.isoformat(),
     }

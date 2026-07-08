@@ -71,6 +71,10 @@ class SignalORM(Base):
     reason: Mapped[str] = mapped_column(String(512))
     details: Mapped[str] = mapped_column(Text)  # JSON-encoded structured breakdown
     opened_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    # Wall-clock insert time — can legitimately be well after opened_at,
+    # since opened_at is the tap candle's close_time, a fact about market
+    # data, not about when this row was written. See Signal.created_at.
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     realized_rr: Mapped[float | None] = mapped_column(Float, nullable=True)
 

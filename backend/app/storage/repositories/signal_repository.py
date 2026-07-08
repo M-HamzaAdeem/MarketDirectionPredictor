@@ -31,6 +31,7 @@ class SignalRepository:
             reason=signal.reason,
             details=json.dumps(signal.details),
             opened_at=signal.opened_at,
+            created_at=signal.created_at,
         )
         self._session.add(row)
         await self._session.commit()
@@ -79,6 +80,7 @@ def _to_domain(row: SignalORM) -> Signal:
         reason=row.reason,
         details=json.loads(row.details),
         opened_at=row.opened_at,
+        created_at=row.created_at,
         status=SignalStatus(row.status),
         closed_at=row.closed_at,
         realized_rr=row.realized_rr,

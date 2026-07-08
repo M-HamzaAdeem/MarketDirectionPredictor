@@ -45,6 +45,20 @@ async def test_save_persists_and_returns_a_signal_with_an_id(session_factory) ->
     assert saved.details == {"poi_type": "order_block", "ote_low": 2348.0, "ote_high": 2351.0}
 
 
+async def test_save_persists_created_at_distinctly_from_opened_at(session_factory) -> None:
+    created_at = datetime(2026, 1, 1, 15, 0, tzinfo=UTC)  # hours after the 10:00 opened_at default
+
+    async with session_factory() as session:
+        saved = await SignalRepository(session).save(_signal(created_at=created_at))
+
+    assert saved.created_at == created_at
+    assert saved.opened_at != saved.created_at
+
+    async with session_factory() as session:
+        recent = await SignalRepository(session).get_recent(Symbol.XAUUSD)
+    assert recent[0].created_at == created_at
+
+
 async def test_get_open_returns_only_open_signals_for_the_requested_symbol(session_factory) -> None:
     async with session_factory() as session:
         repository = SignalRepository(session)

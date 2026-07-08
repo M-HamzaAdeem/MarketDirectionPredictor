@@ -9,8 +9,8 @@ WIN/LOSS/EXPIRED — so it carries an `id` once persisted, so the tracker
 that watches it forward in time can update the same row.
 """
 
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -36,6 +36,13 @@ class Signal:
     reason: str
     details: dict[str, Any]
     opened_at: datetime
+    # Wall-clock moment this row was actually inserted — distinct from
+    # opened_at, which is the *candle's* close_time and can legitimately sit
+    # hours before this (see decisions.md's stale-entry-tap entry: opened_at
+    # is derived from historical market data, not from when the system
+    # itself acted on it). Keeping both is what makes that class of "when
+    # did this really happen" question answerable directly from the DB.
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     status: SignalStatus = SignalStatus.OPEN
     closed_at: datetime | None = None
     realized_rr: float | None = None

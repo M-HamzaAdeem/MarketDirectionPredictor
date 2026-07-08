@@ -94,6 +94,51 @@ async def test_on_candle_closed_creates_and_broadcasts_a_signal_on_15m_close(ses
     assert len(open_signals) == 1
 
 
+async def test_on_candle_closed_does_not_duplicate_a_still_open_signal(session_factory) -> None:
+    await _seed_candles(session_factory, _bullish_setup_candles(Timeframe.H4))
+    await _seed_candles(session_factory, _bullish_setup_candles(Timeframe.H1))
+
+    manager = _RecordingConnectionManager()
+    service = SignalService(BroadcastService(manager), session_factory)
+
+    tap_candle = Candle(
+        symbol=Symbol.XAUUSD,
+        timeframe=Timeframe.M15,
+        open_time=datetime(2026, 1, 2, tzinfo=UTC),
+        close_time=datetime(2026, 1, 2, 0, 15, tzinfo=UTC),
+        open=97.5,
+        high=99.0,
+        low=97.0,
+        close=98.0,
+        volume=1.0,
+    )
+    await _seed_candles(session_factory, [tap_candle])
+    await service.on_candle_closed(tap_candle)
+
+    # A later 15m close that would independently re-derive the exact same
+    # still-open setup (same bias/structure, unchanged 1H/4H data) must not
+    # be saved as a second signal.
+    second_close = Candle(
+        symbol=Symbol.XAUUSD,
+        timeframe=Timeframe.M15,
+        open_time=datetime(2026, 1, 2, 0, 15, tzinfo=UTC),
+        close_time=datetime(2026, 1, 2, 0, 30, tzinfo=UTC),
+        open=98.0,
+        high=99.0,
+        low=97.5,
+        close=98.0,
+        volume=1.0,
+    )
+    await _seed_candles(session_factory, [second_close])
+    await service.on_candle_closed(second_close)
+
+    assert len(manager.broadcasted) == 1
+
+    async with session_factory() as session:
+        open_signals = await SignalRepository(session).get_open(Symbol.XAUUSD)
+    assert len(open_signals) == 1
+
+
 async def test_on_candle_closed_ignores_non_15m_candles(session_factory) -> None:
     manager = _RecordingConnectionManager()
     service = SignalService(BroadcastService(manager), session_factory)
