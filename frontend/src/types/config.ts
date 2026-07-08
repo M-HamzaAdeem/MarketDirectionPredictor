@@ -16,6 +16,8 @@ export interface Config {
   impulse_atr_multiplier: number
   signal_expiry_days: number
 
+  prediction_strategy: string
+
   rsi_bullish_threshold: number
   rsi_bearish_threshold: number
   sma_fast_period: number

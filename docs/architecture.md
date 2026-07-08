@@ -126,10 +126,32 @@ hard stream failure this handles today; see decisions.md.
      test proves the walk-forward windowing doesn't leak future candles
      into an earlier simulated point — the one property that actually
      matters for a backtest to mean anything.
-   - **Part C (later):** ML prediction strategy (scikit-learn/XGBoost per
-     PROJECT.md), informed by whatever the backtest turns up; plugs in
-     behind the existing `PredictionStrategy` interface, no changes
-     needed elsewhere.
+   - **Part C (done):** `MLStrategy` — a `RandomForestClassifier` per
+     (symbol, timeframe) pair (15 total), selected via
+     `Settings.prediction_strategy` (`rule_based`/`ml`) through
+     `app/prediction/factory.py`, mirroring the feed-provider factory
+     pattern. Features are relative/normalized (SMA spread %, RSI, ATR %,
+     momentum %, volatility %, structure), never raw price levels, via a
+     `feature_vector()` transform shared by training (`python -m
+     app.ml.train`) and inference. Trained on a **chronological**
+     train/test split (never shuffled). All 15 models trained successfully
+     against real Twelve Data history; sampled holdout accuracies
+     (XAUUSD/1h 53.7%, AUDUSD/15m 53.7%, AUDUSD/1h 52.6%, AUDUSD/4h 50.5%)
+     land in the same modest-but-real range as the rule-based backtest's
+     own 39-52% — real, honest numbers, but a costly lesson
+     got there: an earlier version of `train.py` also ran a walk-forward
+     backtest of the freshly-saved model over the *full* fetched history,
+     which silently re-tested it on the ~80% of candles it was just
+     trained on, reporting a wildly inflated 83.2% "walk-forward accuracy"
+     for the same XAUUSD/1h run that genuinely scored 53.7%. That
+     auto-comparison was removed entirely — the chronological holdout
+     accuracy `train.py` prints is the only number to trust for judging a
+     trained model; see decisions.md for the full incident, and
+     [TD-7](tech-debt.md) for the separate (non-correctness) finding that
+     a full 15-pair sweep takes ~13-15 minutes with no progress output
+     until it finishes. Settings default to `rule_based` (works out of the box);
+     switching to `ml` requires running `train.py` first — a missing
+     model file returns NEUTRAL/0 confidence rather than raising.
 
 ## Safety rules
 

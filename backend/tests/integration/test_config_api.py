@@ -25,6 +25,7 @@ async def test_get_config_returns_the_effective_settings_and_strategy_parameters
     assert body["stop_atr_buffer_multiplier"] == 0.25
     assert body["impulse_atr_multiplier"] == 1.5
     assert body["signal_expiry_days"] == 5.0
+    assert body["prediction_strategy"] == "rule_based"
     assert body["rsi_bullish_threshold"] == 60.0
     assert body["rsi_bearish_threshold"] == 40.0
     assert body["sma_fast_period"] == 10

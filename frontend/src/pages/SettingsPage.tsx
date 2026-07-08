@@ -24,6 +24,10 @@ function feedItems(config: Config): [string, string | number][] {
   ]
 }
 
+function predictionStrategyItems(config: Config): [string, string | number][] {
+  return [['Active strategy', config.prediction_strategy]]
+}
+
 function signalPipelineItems(config: Config): [string, string | number][] {
   return [
     ['Minimum R:R', config.min_risk_reward.toFixed(2)],
@@ -68,6 +72,11 @@ export function SettingsPage() {
           </section>
 
           <section>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Prediction</h2>
+            <SettingsGrid items={predictionStrategyItems(config)} />
+          </section>
+
+          <section>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
               ICT Signal Pipeline
             </h2>
@@ -76,8 +85,11 @@ export function SettingsPage() {
 
           <section>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
-              Rule-Based Prediction (Phase 3)
+              Rule-Based Prediction Thresholds
             </h2>
+            <p className="mb-3 text-sm text-slate-400">
+              Shown for reference; applied only when the active strategy above is rule_based.
+            </p>
             <SettingsGrid items={ruleBasedItems(config)} />
           </section>
         </>

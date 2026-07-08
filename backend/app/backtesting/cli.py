@@ -3,6 +3,18 @@
 Usage:
     python -m app.backtesting.cli [--symbol XAUUSD] [--kind signal|prediction|both]
 
+Deliberately does NOT offer a `--strategy ml` option to re-test a saved
+MLStrategy model here, even though `run_prediction_backtest` accepts any
+`PredictionStrategy`: doing so correctly requires evaluating only on
+candles the model never trained on, and this CLI has no way to know where
+a given saved model's train/test split boundary was. Running it over an
+arbitrary freshly-refetched history range would silently test the model
+partly (or mostly) on data it already memorized, producing an inflated,
+untrustworthy accuracy — exactly the bug hit and removed from
+`app/ml/train.py` (see decisions.md). `train.py`'s own holdout accuracy,
+computed with a clean chronological split, is the trustworthy number for
+judging a trained model — there is no shortcut through this CLI.
+
 Fetches history directly via a bare `TwelveDataProvider` — deliberately
 bypassing `app/feeds/factory.py`'s fallback-wrapped provider, since a
 backtest must fail loudly on a real data-fetch problem (bad API key, rate

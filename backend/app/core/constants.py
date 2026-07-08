@@ -37,3 +37,8 @@ class FeedStatus(str, Enum):
 class FeedProvider(str, Enum):
     MOCK = "mock"
     TWELVE_DATA = "twelve_data"
+
+
+class PredictionStrategyKind(str, Enum):
+    RULE_BASED = "rule_based"
+    ML = "ml"

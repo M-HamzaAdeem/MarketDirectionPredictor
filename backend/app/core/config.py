@@ -10,7 +10,7 @@ from functools import lru_cache
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.core.constants import FeedProvider, Symbol, Timeframe
+from app.core.constants import FeedProvider, PredictionStrategyKind, Symbol, Timeframe
 
 
 class Settings(BaseSettings):
@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # Only used when feed_provider is FeedProvider.TWELVE_DATA. Never logged
     # or exposed via /config (see app/schemas/config.py) — it's a secret.
     twelve_data_api_key: str = ""
+    # Defaults to the always-available heuristic — MLStrategy needs trained
+    # model files (python -m app.ml.train) that don't exist on a fresh
+    # clone, and silently falls back to NEUTRAL per pair if they're missing.
+    prediction_strategy: PredictionStrategyKind = PredictionStrategyKind.RULE_BASED
+    ml_model_dir: str = "data/models"
     cors_origins: list[str] = ["http://localhost:5173"]
     symbols: list[Symbol] = [Symbol.XAUUSD, Symbol.EURUSD, Symbol.AUDUSD]
     timeframes: list[Timeframe] = [Timeframe.M1, Timeframe.M5, Timeframe.M15, Timeframe.H1, Timeframe.H4]

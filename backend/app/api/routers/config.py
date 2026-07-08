@@ -42,6 +42,7 @@ def get_config(settings: Settings = Depends(get_settings)) -> ConfigOut:
         stop_atr_buffer_multiplier=DEFAULT_STOP_ATR_BUFFER_MULTIPLIER,
         impulse_atr_multiplier=DEFAULT_IMPULSE_ATR_MULTIPLIER,
         signal_expiry_days=DEFAULT_EXPIRY / timedelta(days=1),
+        prediction_strategy=settings.prediction_strategy,
         rsi_bullish_threshold=RSI_BULLISH_THRESHOLD,
         rsi_bearish_threshold=RSI_BEARISH_THRESHOLD,
         sma_fast_period=DEFAULT_SMA_FAST_PERIOD,

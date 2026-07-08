@@ -25,6 +25,10 @@ class ConfigOut(BaseModel):
     impulse_atr_multiplier: float
     signal_expiry_days: float
 
+    # Direction prediction — which strategy is behind /predictions
+    # (see docs/prediction-method.md and app/prediction/factory.py)
+    prediction_strategy: str
+
     # Phase 3 rule-based prediction (see docs/prediction-method.md)
     rsi_bullish_threshold: float
     rsi_bearish_threshold: float

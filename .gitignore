@@ -6,8 +6,10 @@ __pycache__/
 logs/
 data/raw/
 data/cache/
+data/models/
 *.db
 *.sqlite3
+*.joblib
 .coverage
 node_modules/
 dist/

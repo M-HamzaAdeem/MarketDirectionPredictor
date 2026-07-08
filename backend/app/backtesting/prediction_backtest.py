@@ -1,5 +1,8 @@
-"""Walk-forward backtest of the Phase 3 rule-based direction predictor over
-real historical candles for a single symbol/timeframe.
+"""Walk-forward backtest of a direction-predicting PredictionStrategy over
+real historical candles for a single symbol/timeframe. Defaults to the
+Phase 3 rule-based strategy, but accepts any PredictionStrategy (e.g. the
+ML strategy — see app/ml/) so both can be scored with the exact same
+methodology for an honest comparison.
 
 Scores each non-neutral prediction against whether the very next candle's
 close actually moved in the predicted direction — the simplest defensible
@@ -19,6 +22,7 @@ from datetime import datetime
 
 from app.core.constants import Direction, Symbol, Timeframe
 from app.feeds.base import Candle
+from app.prediction.base import PredictionStrategy
 from app.prediction.engine import CANDLE_WINDOW, PredictionEngine
 from app.prediction.rule_based import RuleBasedStrategy
 
@@ -41,11 +45,13 @@ def run_prediction_backtest(
     timeframe: Timeframe,
     candles: list[Candle],
     window: int = CANDLE_WINDOW,
+    strategy: PredictionStrategy | None = None,
 ) -> PredictionBacktestSummary:
     """`candles` must be closed candles in ascending open_time order.
     `window` defaults to the real live window — overridable so tests can
-    exercise this with small fixtures instead of needing 100+ candles."""
-    engine = PredictionEngine(RuleBasedStrategy())
+    exercise this with small fixtures instead of needing 100+ candles.
+    `strategy` defaults to a fresh `RuleBasedStrategy()`."""
+    engine = PredictionEngine(strategy if strategy is not None else RuleBasedStrategy())
     correct = incorrect = neutral_skipped = 0
 
     for i in range(window, len(candles)):
