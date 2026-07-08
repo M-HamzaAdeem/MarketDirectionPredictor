@@ -21,6 +21,12 @@ Earlier versions called `build_signal()` unconditionally at every step and
 fast-forward-resolved each result using all remaining future candles in
 one shot, which could append the same still-valid, rediscovered setup as
 multiple separate "signals."
+
+A tap candle already used to open a signal is also never reused, even
+after that signal resolves — otherwise the same stale setup can rapid-
+fire reopen every 15m step for as long as it remains inside the rolling
+15m window, the moment its previous instance closes. See
+[[backtest-rapid-reopen-fix]] in decisions.md.
 """
 
 from dataclasses import dataclass, replace
@@ -29,7 +35,7 @@ from datetime import datetime, timedelta
 from app.core.constants import Symbol
 from app.feeds.base import Candle
 from app.prediction.signal import Signal, SignalStatus
-from app.prediction.signal_builder import build_signal
+from app.prediction.signal_builder import build_signal, eligible_entry_candles
 from app.prediction.signal_resolution import resolve_signal
 from app.services.signal_service import CANDLE_WINDOW_1H, CANDLE_WINDOW_4H, CANDLE_WINDOW_15M
 from app.services.signal_tracker import DEFAULT_EXPIRY
@@ -67,6 +73,7 @@ def run_signal_backtest(
     100+/20+ real candles."""
     resolved_signals: list[Signal] = []
     open_signal: Signal | None = None
+    last_signal_opened_at: datetime | None = None
     pointer_4h = pointer_1h = 0
 
     for i, candle in enumerate(candles_15m):
@@ -103,7 +110,13 @@ def run_signal_backtest(
         if not has_warmup:
             continue  # not enough warmup history yet, same as a fresh live deployment
 
+        # The warmup check above is about raw history depth; this is about
+        # candidate eligibility, so it's applied after, not folded in.
+        window_15m_candles = eligible_entry_candles(window_15m_candles, last_signal_opened_at)
+
         open_signal = build_signal(symbol, window_4h_candles, window_1h_candles, window_15m_candles)
+        if open_signal is not None:
+            last_signal_opened_at = open_signal.opened_at
 
     if open_signal is not None:
         resolved_signals.append(open_signal)  # ran out of history before it resolved — still OPEN

@@ -82,6 +82,20 @@ def build_signal(
     return _assemble_signal(symbol, setup, tap_candle)
 
 
+def eligible_entry_candles(candles: list[Candle], after: datetime | None) -> list[Candle]:
+    """15m candles eligible as a fresh entry tap: strictly after the tap
+    candle of the last signal already opened for this symbol, if any.
+    Without this, `_check_entry`'s rolling window can rediscover the exact
+    same historical tap and reopen it the instant its predecessor
+    resolves, for as long as it remains inside the window — see
+    [[backtest-rapid-reopen-fix]] in decisions.md. Shared by SignalService
+    (live) and run_signal_backtest so the eligibility rule can't silently
+    diverge between the two."""
+    if after is None:
+        return candles
+    return [candle for candle in candles if candle.close_time > after]
+
+
 def _assemble_signal(symbol: Symbol, setup: _Setup, tap_candle: Candle) -> Signal | None:
     entry = (setup.entry_low + setup.entry_high) / 2
     risk = abs(entry - setup.stop)

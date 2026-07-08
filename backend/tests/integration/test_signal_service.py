@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.constants import Direction, Symbol, Timeframe
 from app.feeds.base import Candle
+from app.prediction.signal import SignalStatus
 from app.services.broadcast_service import BroadcastService
 from app.services.signal_service import SignalService
 from app.storage.database import Base
@@ -137,6 +138,64 @@ async def test_on_candle_closed_does_not_duplicate_a_still_open_signal(session_f
     async with session_factory() as session:
         open_signals = await SignalRepository(session).get_open(Symbol.XAUUSD)
     assert len(open_signals) == 1
+
+
+async def test_on_candle_closed_does_not_reopen_a_tap_candle_after_its_signal_resolves(session_factory) -> None:
+    """Regression for a bug found via a real backtest run: even with the
+    "one open at a time" guard, nothing previously stopped the exact same
+    tap candle from reopening a fresh signal the instant its predecessor
+    resolved, for as long as it remained inside the rolling 15m window
+    (CANDLE_WINDOW_15M=20) fetched fresh on every call."""
+    await _seed_candles(session_factory, _bullish_setup_candles(Timeframe.H4))
+    await _seed_candles(session_factory, _bullish_setup_candles(Timeframe.H1))
+
+    manager = _RecordingConnectionManager()
+    service = SignalService(BroadcastService(manager), session_factory)
+
+    tap_candle = Candle(
+        symbol=Symbol.XAUUSD,
+        timeframe=Timeframe.M15,
+        open_time=datetime(2026, 1, 2, tzinfo=UTC),
+        close_time=datetime(2026, 1, 2, 0, 15, tzinfo=UTC),
+        open=97.5,
+        high=99.0,
+        low=97.0,
+        close=98.0,
+        volume=1.0,
+    )
+    await _seed_candles(session_factory, [tap_candle])
+    await service.on_candle_closed(tap_candle)
+
+    async with session_factory() as session:
+        repository = SignalRepository(session)
+        [open_signal] = await repository.get_open(Symbol.XAUUSD)
+        # Simulate SignalTracker resolving it (a separate handler in the
+        # live pipeline, not exercised by this SignalService-only test).
+        await repository.update_outcome(open_signal.id, SignalStatus.LOSS, tap_candle.close_time, -1.0)
+
+    # A later 15m close, with the tap candle still inside the rolling
+    # window and nothing new having happened, must not reopen it. Kept
+    # clearly outside the [95.636, 98.322] entry zone itself, so it isn't
+    # a genuine new tap of its own.
+    later_close = Candle(
+        symbol=Symbol.XAUUSD,
+        timeframe=Timeframe.M15,
+        open_time=datetime(2026, 1, 2, 0, 15, tzinfo=UTC),
+        close_time=datetime(2026, 1, 2, 0, 30, tzinfo=UTC),
+        open=105.0,
+        high=106.0,
+        low=104.0,
+        close=105.0,
+        volume=1.0,
+    )
+    await _seed_candles(session_factory, [later_close])
+    await service.on_candle_closed(later_close)
+
+    assert len(manager.broadcasted) == 1  # only the original creation broadcast
+
+    async with session_factory() as session:
+        open_signals = await SignalRepository(session).get_open(Symbol.XAUUSD)
+    assert open_signals == []
 
 
 async def test_on_candle_closed_ignores_non_15m_candles(session_factory) -> None:

@@ -156,6 +156,34 @@ def test_does_not_create_a_duplicate_signal_while_one_is_already_open() -> None:
     assert summary.still_open == 1
 
 
+def test_does_not_reopen_a_tap_candle_after_its_signal_resolves() -> None:
+    """Regression for a second, related bug: even with the "one open at a
+    time" guard, nothing previously stopped the SAME tap candle from
+    reopening a fresh signal immediately after the first one resolved, for
+    as long as it remained inside the rolling 15m window. Found live via a
+    real backtest run that produced the identical entry/stop/target signal
+    seven times in a row, each resolving as a loss after a single bar."""
+    candles_1h = _bullish_1h_candles()
+    hour_18 = datetime(2026, 1, 1, 18, tzinfo=UTC)
+    candles_15m = [
+        _m15_candle(150.0, 155.0, hour_18 + timedelta(minutes=15)),  # out of zone
+        _m15_candle(97.0, 99.0, hour_18 + timedelta(minutes=30)),  # taps [95.636, 98.322]: signal fires
+        # Hits the ~88.911 stop: quick LOSS. With window_15m=2, the tap
+        # candle above is still inside *this same step's* rolling window
+        # once the signal resolves — the exact condition that reopened the
+        # same stale signal live, immediately, on the very candle that
+        # just closed it.
+        _m15_candle(85.0, 90.0, hour_18 + timedelta(minutes=45)),
+    ]
+
+    summary = run_signal_backtest(
+        Symbol.XAUUSD, candles_1h, candles_1h, candles_15m, window_4h=18, window_1h=18, window_15m=2
+    )
+
+    assert summary.total_signals == 1
+    assert summary.losses == 1
+
+
 def test_summary_reports_none_for_range_bounds_on_empty_input() -> None:
     summary = run_signal_backtest(Symbol.XAUUSD, [], [], [])
 

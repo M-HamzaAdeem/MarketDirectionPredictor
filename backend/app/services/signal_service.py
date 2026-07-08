@@ -6,13 +6,20 @@ Only ever acts on 15m candle closes — that's the signal builder's entry
 confirmation timeframe (see prediction/signal_builder.py); a 4H or 1H
 close doesn't need to re-trigger this, since bias/setup only matter once
 an actual entry tap is confirmed on 15m.
+
+A tap candle already used to open a signal is never reused to open
+another one, even after that signal resolves — otherwise the same stale
+setup can rapid-fire reopen on every subsequent 15m close for as long as
+it remains inside the rolling 15m window, the instant its previous
+instance closes. See [[backtest-rapid-reopen-fix]] in decisions.md (found
+via the backtest engine, but the same gap applies here).
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.constants import Timeframe
 from app.feeds.base import Candle
-from app.prediction.signal_builder import build_signal
+from app.prediction.signal_builder import build_signal, eligible_entry_candles
 from app.services.broadcast_service import BroadcastService
 from app.storage.repositories.candle_repository import CandleRepository
 from app.storage.repositories.signal_repository import SignalRepository
@@ -49,6 +56,13 @@ class SignalService:
             candles_15m = await candle_repository.get_recent(
                 candle.symbol, Timeframe.M15, limit=CANDLE_WINDOW_15M
             )
+
+            # Never let _check_entry rediscover a tap candle that already
+            # opened a signal for this symbol, even one that has since
+            # resolved — see the module docstring.
+            most_recent = await signal_repository.get_recent(candle.symbol, limit=1)
+            last_opened_at = most_recent[0].opened_at if most_recent else None
+            candles_15m = eligible_entry_candles(candles_15m, last_opened_at)
 
             signal = build_signal(candle.symbol, candles_4h, candles_1h, candles_15m)
             if signal is None:
