@@ -25,6 +25,9 @@ export function getSignalHistory(symbol: MarketSymbol, limit = 100): Promise<Sig
   return apiGet<Signal[]>(`/signals/${symbol}/history?limit=${limit}`)
 }
 
-export function getPredictionHistory(symbol: MarketSymbol, timeframe: Timeframe, limit = 100): Promise<Prediction[]> {
-  return apiGet<Prediction[]>(`/predictions/${symbol}/${timeframe}/history?limit=${limit}`)
+/** Computes a prediction on demand from whatever closed candles already
+ * exist — no live candle-close event required. 404s if there isn't at
+ * least one closed candle yet for this symbol/timeframe. */
+export function getPredictionLatest(symbol: MarketSymbol, timeframe: Timeframe): Promise<Prediction> {
+  return apiGet<Prediction>(`/predictions/${symbol}/${timeframe}/latest`)
 }

@@ -1,11 +1,9 @@
 import { useState } from 'react'
 import { useCandles } from '../../hooks/useCandles'
-import { usePredictionHistory } from '../../hooks/usePredictionHistory'
 import { useSignalHistory } from '../../hooks/useSignalHistory'
 import { useMarketStore } from '../../store/marketStore'
 import type { MarketSymbol, Timeframe } from '../../types/market'
 import { PerformanceStats } from './PerformanceStats'
-import { PredictionHistoryTable } from './PredictionHistoryTable'
 import { PriceChart } from './PriceChart'
 import { SignalHistoryTable } from './SignalHistoryTable'
 import { SymbolTimeframeSelector } from './SymbolTimeframeSelector'
@@ -16,7 +14,6 @@ export function SymbolDetail() {
 
   const { data: candles = [] } = useCandles(symbol, timeframe)
   const { data: signalHistory = [] } = useSignalHistory(symbol)
-  const { data: predictionHistory = [] } = usePredictionHistory(symbol, timeframe)
 
   // .find() returns whatever object is currently in the map (or undefined)
   // — never a per-call-allocated container like selectOpenSignals' derived
@@ -38,7 +35,7 @@ export function SymbolDetail() {
         onTimeframeChange={setTimeframe}
       />
 
-      <PriceChart candles={candles} signal={openSignal} />
+      <PriceChart symbol={symbol} candles={candles} signal={openSignal} />
 
       <div>
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Performance</h3>
@@ -48,11 +45,6 @@ export function SymbolDetail() {
       <div>
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Signal History</h3>
         <SignalHistoryTable signals={signalHistory} />
-      </div>
-
-      <div>
-        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Prediction History</h3>
-        <PredictionHistoryTable predictions={predictionHistory} />
       </div>
     </div>
   )

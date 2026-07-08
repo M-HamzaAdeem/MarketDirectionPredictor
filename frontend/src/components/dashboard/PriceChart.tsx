@@ -4,22 +4,62 @@ import {
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
+  type Time,
   type UTCTimestamp,
 } from 'lightweight-charts'
 import { useEffect, useRef } from 'react'
-import type { Candle } from '../../types/market'
+import type { Candle, MarketSymbol } from '../../types/market'
 import type { Signal } from '../../types/signal'
 
-const CHART_HEIGHT_PX = 320
+const CHART_HEIGHT_PX = 480
+
+// Candle timestamps are stored/served in UTC, but the trader watching this
+// chart is in UTC+5 — shifting the timestamp itself (rather than relying on
+// the viewer's browser timezone) means the axis always reads correctly
+// regardless of what machine it's viewed from.
+const DISPLAY_UTC_OFFSET_HOURS = 5
+const DISPLAY_UTC_OFFSET_SECONDS = DISPLAY_UTC_OFFSET_HOURS * 3600
+
+// EURUSD/AUDUSD move in increments too small for the default 2-decimal
+// price format to show meaningfully; XAUUSD's larger price range is fine
+// at the default precision.
+const FOUR_DECIMAL_SYMBOLS = new Set<MarketSymbol>(['EURUSD', 'AUDUSD'])
+
+function toDisplayTime(isoString: string): UTCTimestamp {
+  return (Math.floor(new Date(isoString).getTime() / 1000) + DISPLAY_UTC_OFFSET_SECONDS) as UTCTimestamp
+}
+
+// Renders as e.g. "Jul 8, 14:30" using UTC getters — since the timestamp
+// already has DISPLAY_UTC_OFFSET_SECONDS baked in, reading it back with UTC
+// getters yields the shifted (local) calendar time regardless of the
+// viewer's own browser timezone.
+function formatDisplayTime(time: Time): string {
+  // Intraday series (1m/5m/15m/1h/4h, always time-visible) always hand back
+  // the numeric UTCTimestamp form, never the day-granular BusinessDay
+  // object — but the type allows both, so guard rather than cast blindly.
+  if (typeof time !== 'number') return ''
+
+  const date = new Date(time * 1000)
+  const datePart = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  const timePart = date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'UTC',
+  })
+  return `${datePart}, ${timePart}`
+}
 
 interface PriceChartProps {
+  symbol: MarketSymbol
   candles: Candle[]
   /** The open signal for this symbol/timeframe, if any — drawn as entry/stop/target lines. */
   signal?: Signal | null
 }
 
-export function PriceChart({ candles, signal }: PriceChartProps) {
+export function PriceChart({ symbol, candles, signal }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
 
   useEffect(() => {
@@ -31,7 +71,16 @@ export function PriceChart({ candles, signal }: PriceChartProps) {
       grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
       width: container.clientWidth,
       height: CHART_HEIGHT_PX,
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: false,
+        tickMarkFormatter: formatDisplayTime,
+      },
+      localization: {
+        timeFormatter: formatDisplayTime,
+      },
     })
+    chartRef.current = chart
 
     const series = chart.addSeries(CandlestickSeries, {
       upColor: '#34d399',
@@ -56,6 +105,7 @@ export function PriceChart({ candles, signal }: PriceChartProps) {
     return () => {
       resizeObserver.disconnect()
       chart.remove()
+      chartRef.current = null
       seriesRef.current = null
     }
   }, [])
@@ -64,15 +114,32 @@ export function PriceChart({ candles, signal }: PriceChartProps) {
     const series = seriesRef.current
     if (!series) return
 
+    series.applyOptions({
+      priceFormat: FOUR_DECIMAL_SYMBOLS.has(symbol)
+        ? { type: 'price', precision: 4, minMove: 0.0001 }
+        : { type: 'price', precision: 2, minMove: 0.01 },
+    })
+  }, [symbol])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    const series = seriesRef.current
+    if (!chart || !series) return
+
     series.setData(
       candles.map((candle) => ({
-        time: Math.floor(new Date(candle.open_time).getTime() / 1000) as UTCTimestamp,
+        time: toDisplayTime(candle.open_time),
         open: candle.open,
         high: candle.high,
         low: candle.low,
         close: candle.close,
       })),
     )
+    // setData() alone doesn't reset the visible time range — without this,
+    // switching symbol/timeframe keeps whatever window was visible for the
+    // previous data, which can make an entirely different price range
+    // (e.g. XAUUSD's ~4000s vs EURUSD's ~1.1s) look like it never rescaled.
+    chart.timeScale().fitContent()
   }, [candles])
 
   useEffect(() => {

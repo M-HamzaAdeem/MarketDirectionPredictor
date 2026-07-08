@@ -7,6 +7,14 @@ export type MarketSymbol = 'XAUUSD' | 'EURUSD' | 'AUDUSD'
 
 export type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h'
 
+// The enumerable form of the two union types above, for callers that need
+// to iterate every value (e.g. seeding a bootstrap fetch per symbol x
+// timeframe) rather than just type-check one. A single source so this
+// list can't drift out of sync across the three places that need it.
+export const ALL_SYMBOLS = ['XAUUSD', 'EURUSD', 'AUDUSD'] as const satisfies readonly MarketSymbol[]
+
+export const ALL_TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h'] as const satisfies readonly Timeframe[]
+
 export type Direction = 'bullish' | 'bearish' | 'neutral'
 
 export type FeedStatus = 'mock' | 'live' | 'degraded' | 'disconnected'

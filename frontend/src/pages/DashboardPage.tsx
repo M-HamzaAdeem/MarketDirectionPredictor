@@ -3,16 +3,14 @@ import { PredictionPanel } from '../components/dashboard/PredictionPanel'
 import { SignalFeed } from '../components/dashboard/SignalFeed'
 import { SymbolCard } from '../components/dashboard/SymbolCard'
 import { SymbolDetail } from '../components/dashboard/SymbolDetail'
-import type { MarketSymbol } from '../types/market'
-
-const SYMBOLS: MarketSymbol[] = ['XAUUSD', 'EURUSD', 'AUDUSD']
+import { ALL_SYMBOLS } from '../types/market'
 
 export function DashboardPage() {
   return (
     <AppShell>
       <section>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {SYMBOLS.map((symbol) => (
+          {ALL_SYMBOLS.map((symbol) => (
             <SymbolCard key={symbol} symbol={symbol} />
           ))}
         </div>
