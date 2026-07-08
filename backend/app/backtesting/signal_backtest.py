@@ -12,6 +12,15 @@ actually have been closed by then. `_advance` maintains a monotonically
 advancing pointer per timeframe (candles are ascending by close_time, and
 simulated time only moves forward) so this stays O(n) instead of
 re-filtering the whole history at every step.
+
+At most one open signal is tracked at a time, mirroring the live ordering
+in main.py's `candle_close_handlers` (`SignalTracker` resolves an existing
+open signal before `SignalService` considers creating a new one from the
+same candle) — see [[backtest-duplicate-signal-fix]] in decisions.md.
+Earlier versions called `build_signal()` unconditionally at every step and
+fast-forward-resolved each result using all remaining future candles in
+one shot, which could append the same still-valid, rediscovered setup as
+multiple separate "signals."
 """
 
 from dataclasses import dataclass, replace
@@ -56,13 +65,31 @@ def run_signal_backtest(
     to the real live windows — overridable so tests can exercise the
     walk-forward/warmup logic with small fixtures instead of needing 60+/
     100+/20+ real candles."""
-    signals: list[Signal] = []
+    resolved_signals: list[Signal] = []
+    open_signal: Signal | None = None
     pointer_4h = pointer_1h = 0
 
     for i, candle in enumerate(candles_15m):
         as_of = candle.close_time
         pointer_4h = _advance(candles_4h, as_of, pointer_4h)
         pointer_1h = _advance(candles_1h, as_of, pointer_1h)
+
+        # Mirrors SignalTracker: resolve a currently-open signal against
+        # just this one new candle, exactly like the live path does,
+        # rather than fast-forwarding through all remaining history.
+        if open_signal is not None:
+            outcome = resolve_signal(open_signal, candle, expiry)
+            if outcome is not None:
+                status, realized_rr = outcome
+                resolved_signals.append(
+                    replace(open_signal, status=status, closed_at=candle.close_time, realized_rr=realized_rr)
+                )
+                open_signal = None
+
+        # Mirrors SignalService's get_open() guard: only ever consider
+        # creating a new signal once none remains open.
+        if open_signal is not None:
+            continue
 
         window_4h_candles = candles_4h[max(0, pointer_4h - window_4h) : pointer_4h]
         window_1h_candles = candles_1h[max(0, pointer_1h - window_1h) : pointer_1h]
@@ -76,26 +103,18 @@ def run_signal_backtest(
         if not has_warmup:
             continue  # not enough warmup history yet, same as a fresh live deployment
 
-        signal = build_signal(symbol, window_4h_candles, window_1h_candles, window_15m_candles)
-        if signal is not None:
-            signals.append(_resolve_forward(signal, candles_15m[i + 1 :], expiry))
+        open_signal = build_signal(symbol, window_4h_candles, window_1h_candles, window_15m_candles)
 
-    return _summarize(symbol, candles_15m, signals)
+    if open_signal is not None:
+        resolved_signals.append(open_signal)  # ran out of history before it resolved — still OPEN
+
+    return _summarize(symbol, candles_15m, resolved_signals)
 
 
 def _advance(candles: list[Candle], as_of: datetime, pointer: int) -> int:
     while pointer < len(candles) and candles[pointer].close_time <= as_of:
         pointer += 1
     return pointer
-
-
-def _resolve_forward(signal: Signal, future_candles: list[Candle], expiry: timedelta) -> Signal:
-    for candle in future_candles:
-        outcome = resolve_signal(signal, candle, expiry)
-        if outcome is not None:
-            status, realized_rr = outcome
-            return replace(signal, status=status, closed_at=candle.close_time, realized_rr=realized_rr)
-    return signal  # ran out of history before it resolved — still OPEN
 
 
 def _summarize(symbol: Symbol, candles_15m: list[Candle], signals: list[Signal]) -> SignalBacktestSummary:

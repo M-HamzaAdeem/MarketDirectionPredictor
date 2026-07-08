@@ -128,6 +128,34 @@ def test_does_not_leak_future_1h_candles_into_an_earlier_15m_step() -> None:
     assert late_summary.total_signals == 1  # same tap, full history now visible -> real signal
 
 
+def test_does_not_create_a_duplicate_signal_while_one_is_already_open() -> None:
+    """Regression for the exact live bug this fix addresses: with a
+    rolling 15m window wider than 1, the same historical tap candle can
+    stay "in view" across multiple consecutive steps and get rediscovered
+    by _check_entry every time, even though nothing new has happened.
+    Without the open-signal guard, each rediscovery would be appended as
+    a separate "signal" for the same still-open setup."""
+    candles_1h = _bullish_1h_candles()
+    hour_18 = datetime(2026, 1, 1, 18, tzinfo=UTC)
+    candles_15m = [
+        _m15_candle(150.0, 155.0, hour_18 + timedelta(minutes=15)),  # out of zone
+        _m15_candle(97.0, 99.0, hour_18 + timedelta(minutes=30)),  # taps [97.5, 98.322]: signal fires
+        # Out of the entry zone itself, and — critically — between the
+        # ~88.911 stop and ~120.6 target, so it doesn't resolve the open
+        # signal either. With window_15m=2 the tap candle above is still
+        # inside this step's rolling window — the exact condition that
+        # produced a duplicate signal live before this fix.
+        _m15_candle(105.0, 106.0, hour_18 + timedelta(minutes=45)),
+    ]
+
+    summary = run_signal_backtest(
+        Symbol.XAUUSD, candles_1h, candles_1h, candles_15m, window_4h=18, window_1h=18, window_15m=2
+    )
+
+    assert summary.total_signals == 1
+    assert summary.still_open == 1
+
+
 def test_summary_reports_none_for_range_bounds_on_empty_input() -> None:
     summary = run_signal_backtest(Symbol.XAUUSD, [], [], [])
 
