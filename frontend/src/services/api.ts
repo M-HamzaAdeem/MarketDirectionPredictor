@@ -1,11 +1,18 @@
 import { apiGet } from './apiClient'
 import type { Config } from '../types/config'
-import type { Candle, MarketSymbol, Timeframe } from '../types/market'
+import type { Candle, MarketSymbol, Price, Timeframe } from '../types/market'
 import type { Prediction } from '../types/prediction'
 import type { Signal } from '../types/signal'
 
 export function getSymbols(): Promise<MarketSymbol[]> {
   return apiGet<MarketSymbol[]>('/symbols')
+}
+
+/** Latest price per configured symbol — the live tick cache, falling back
+ * server-side to the latest closed 1m candle for a symbol that hasn't
+ * ticked yet this session. Omits a symbol with neither. */
+export function getPrices(): Promise<Price[]> {
+  return apiGet<Price[]>('/prices')
 }
 
 export function getConfig(): Promise<Config> {

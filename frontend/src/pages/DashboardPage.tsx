@@ -3,9 +3,12 @@ import { PredictionPanel } from '../components/dashboard/PredictionPanel'
 import { SignalFeed } from '../components/dashboard/SignalFeed'
 import { SymbolCard } from '../components/dashboard/SymbolCard'
 import { SymbolDetail } from '../components/dashboard/SymbolDetail'
+import { usePricesBootstrap } from '../hooks/usePricesBootstrap'
 import { ALL_SYMBOLS } from '../types/market'
 
 export function DashboardPage() {
+  usePricesBootstrap()
+
   return (
     <AppShell>
       <section>
