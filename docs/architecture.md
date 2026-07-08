@@ -101,16 +101,23 @@ hard stream failure this handles today; see decisions.md.
      first — verified live end-to-end (see decisions.md). Forex/commodity
      data carries no real volume; `compute_volume_profile` was hardened to
      return `None` rather than a fabricated POC when volume is all zero.
-   - **Part B (done):** `FallbackMarketDataProvider` wraps
-     `[TwelveDataProvider, MockMarketDataProvider]` whenever a real feed is
-     selected — falls back to the mock feed immediately (inside the same
-     `stream_ticks()` call, not waiting out `FeedService`'s own reconnect
-     backoff) the moment the primary fails, surfaced via `FeedStatus`
-     (`nominal_status` is now read live from the active provider, not
-     cached); periodically retries the primary via a bounded fallback
-     duration. Verified live: booting against the real Twelve Data account
-     reports `feed_status: "live"`, confirming the wrapper delegates
-     correctly when the primary is healthy. The backtesting engine
+   - **Part B (done, later reversed 2026-07-08):** originally shipped
+     `FallbackMarketDataProvider`, wrapping
+     `[TwelveDataProvider, MockMarketDataProvider]` whenever a real feed
+     was selected — falling back to the mock feed immediately the moment
+     the primary failed, and periodically retrying the primary. Removed
+     after a real ~3.5-hour Twelve Data outage caused it to write mock
+     candles into the same `candles` rows as real historical data, with
+     no column recording which provider produced a given row —
+     indistinguishable contamination discovered only by eyeballing OHLC/
+     volume signatures. `create_provider()` now returns a bare
+     `TwelveDataProvider` for the real feed with no automatic fallback: a
+     real feed failure surfaces loudly as `FeedStatus.DISCONNECTED`
+     (`FeedService`'s existing reconnect-with-backoff, Phase 8, still
+     applies) rather than being silently masked. `MockMarketDataProvider`
+     remains available as an explicit, deliberate choice
+     (`FEED_PROVIDER=mock`) for local development and tests. See
+     [[remove-mock-auto-fallback]] in decisions.md. The backtesting engine
      (`app/backtesting/`) walk-forward replays `build_signal()` and the
      rule-based `PredictionEngine` against real historical data, reusing
      both completely unmodified — only the historical windowing is new —
@@ -118,10 +125,11 @@ hard stream failure this handles today; see decisions.md.
      is. `resolve_signal()` was extracted from `SignalTracker` into a
      shared pure function for this reason. Run via
      `python -m app.backtesting.cli [--symbol XAUUSD] [--kind signal|prediction|both]`,
-     which fetches history directly via a bare `TwelveDataProvider` (not
-     the fallback-wrapped one — a backtest must fail loudly on a real
-     fetch problem, not silently substitute the mock feed's much shorter
-     synthetic history), prints a summary, and persists it
+     which fetches history directly via a bare `TwelveDataProvider`, not
+     through `create_provider()` — a backtest must always use real data
+     regardless of the running app's configured `feed_provider`, and must
+     fail loudly on a real fetch problem rather than producing a
+     meaningless result — prints a summary, and persists it
      (`GET /backtests` to review past runs later). A dedicated regression
      test proves the walk-forward windowing doesn't leak future candles
      into an earlier simulated point — the one property that actually

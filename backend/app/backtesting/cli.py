@@ -15,11 +15,12 @@ untrustworthy accuracy — exactly the bug hit and removed from
 computed with a clean chronological split, is the trustworthy number for
 judging a trained model — there is no shortcut through this CLI.
 
-Fetches history directly via a bare `TwelveDataProvider` — deliberately
-bypassing `app/feeds/factory.py`'s fallback-wrapped provider, since a
-backtest must fail loudly on a real data-fetch problem (bad API key, rate
-limit, network error), not silently substitute the mock feed's much
-shorter synthetic history and produce a meaningless "backtest."
+Fetches history directly via a bare `TwelveDataProvider`, not through
+`app/feeds/factory.py`'s `create_provider()` — a backtest must always use
+real data regardless of whatever `Settings.feed_provider` the running app
+happens to be configured for (e.g. `mock` for local dev), and must fail
+loudly on a real data-fetch problem (bad API key, rate limit, network
+error) rather than producing a meaningless result.
 
 Prints a summary to stdout and persists it via BacktestRunRepository so it
 can be reviewed later (GET /backtests) without re-running — a real,

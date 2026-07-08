@@ -3,25 +3,22 @@ import pytest
 from app.core.config import Settings
 from app.core.constants import FeedProvider
 from app.feeds.factory import create_provider
-from app.feeds.fallback_provider import FallbackMarketDataProvider
 from app.feeds.mock_provider import MockMarketDataProvider
 from app.feeds.twelve_data_provider import TwelveDataProvider
 
 
 def test_creates_mock_provider_by_default() -> None:
-    provider = create_provider(Settings())
+    # _env_file=None bypasses the developer's real .env (which may set
+    # FEED_PROVIDER=twelve_data for manual runs) so this purely tests the
+    # field's declared default, not whatever's configured for local use.
+    provider = create_provider(Settings(_env_file=None))
     assert isinstance(provider, MockMarketDataProvider)
 
 
-def test_creates_twelve_data_provider_wrapped_in_a_fallback_chain() -> None:
+def test_creates_a_bare_twelve_data_provider_with_no_fallback() -> None:
     settings = Settings(feed_provider=FeedProvider.TWELVE_DATA, twelve_data_api_key="test-key")
     provider = create_provider(settings)
-    assert isinstance(provider, FallbackMarketDataProvider)
-    # Reaching into the "private" provider list is test-only introspection
-    # of the factory's wiring order, not something FallbackMarketDataProvider
-    # promises as a public API.
-    assert isinstance(provider._providers[0], TwelveDataProvider)
-    assert isinstance(provider._providers[1], MockMarketDataProvider)
+    assert isinstance(provider, TwelveDataProvider)
 
 
 def test_twelve_data_without_an_api_key_raises() -> None:

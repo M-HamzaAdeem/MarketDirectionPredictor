@@ -12,13 +12,14 @@ persistence lives in CandleRepository; each handler is tested independently.
 If the provider's tick stream ends or raises (connection drop, transient
 provider failure), `_run` doesn't give up — it reconnects with exponential
 backoff, broadcasting FeedStatus.DISCONNECTED for the duration and back to
-the provider's nominal status once ticks resume. `nominal_status` is read
-fresh from the provider each time (never cached), since a composite
-provider like `FallbackMarketDataProvider` reports a different nominal
-status depending on which underlying provider is currently active.
+the provider's nominal status once ticks resume. There is deliberately no
+automatic fallback to the mock feed here: a real provider failing must be
+loud and visible (surfaced as DISCONNECTED, then reconnected), not
+silently masked by synthetic data written into the same candles table as
+real history — see [[remove-mock-auto-fallback]] in decisions.md.
 `MockMarketDataProvider` never actually fails today, but a real feed
-adapter will, and this is the seam that handles it without every provider
-needing its own retry logic.
+adapter will, and this reconnect loop is the seam that handles it without
+every provider needing its own retry logic.
 
 `backfill()` fetches and persists missing historical candles for every
 configured symbol/timeframe via the provider's `fetch_history()` before
