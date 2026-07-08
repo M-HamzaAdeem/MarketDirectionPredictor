@@ -23,13 +23,16 @@ export function getCandles(symbol: MarketSymbol, timeframe: Timeframe, limit = 1
   return apiGet<Candle[]>(`/candles/${symbol}/${timeframe}?limit=${limit}`)
 }
 
-export function getOpenSignals(symbol?: MarketSymbol): Promise<Signal[]> {
-  const query = symbol ? `?symbol=${symbol}` : ''
-  return apiGet<Signal[]>(`/signals/open${query}`)
-}
-
 export function getSignalHistory(symbol: MarketSymbol, limit = 100): Promise<Signal[]> {
   return apiGet<Signal[]>(`/signals/${symbol}/history?limit=${limit}`)
+}
+
+/** Returns the already-open signal for this symbol as-is if one exists;
+ * otherwise computes one on demand from whatever closed candles already
+ * exist — no live 15m candle-close event required. 404s if neither an
+ * open signal nor a winning-caliber setup exists right now. */
+export function getSignalLatest(symbol: MarketSymbol): Promise<Signal> {
+  return apiGet<Signal>(`/signals/${symbol}/latest`)
 }
 
 /** Computes a prediction on demand from whatever closed candles already

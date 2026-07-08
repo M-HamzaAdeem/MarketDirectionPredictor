@@ -1,10 +1,10 @@
 import { useShallow } from 'zustand/react/shallow'
-import { useOpenSignalsBootstrap } from '../../hooks/useOpenSignalsBootstrap'
+import { useSignalsBootstrap } from '../../hooks/useSignalsBootstrap'
 import { selectOpenSignals, useMarketStore } from '../../store/marketStore'
 import { SignalCard } from './SignalCard'
 
 export function SignalFeed() {
-  useOpenSignalsBootstrap()
+  useSignalsBootstrap()
   // selectOpenSignals derives a new array every call (filter+sort); useShallow
   // compares its elements instead of the array reference, so the component
   // only re-renders when the actual open-signal set changes — without this,
