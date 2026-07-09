@@ -8,8 +8,10 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts'
 import { useEffect, useRef } from 'react'
-import type { Candle, MarketSymbol } from '../../types/market'
+import type { Candle, MarketSymbol, Timeframe } from '../../types/market'
 import type { Signal } from '../../types/signal'
+import { describeChart } from '../../utils/describeChart'
+import { pricePrecision } from '../../utils/priceFormat'
 
 const CHART_HEIGHT_PX = 480
 
@@ -19,11 +21,6 @@ const CHART_HEIGHT_PX = 480
 // regardless of what machine it's viewed from.
 const DISPLAY_UTC_OFFSET_HOURS = 5
 const DISPLAY_UTC_OFFSET_SECONDS = DISPLAY_UTC_OFFSET_HOURS * 3600
-
-// EURUSD/AUDUSD move in increments too small for the default 2-decimal
-// price format to show meaningfully; XAUUSD's larger price range is fine
-// at the default precision.
-const FOUR_DECIMAL_SYMBOLS = new Set<MarketSymbol>(['EURUSD', 'AUDUSD'])
 
 function toDisplayTime(isoString: string): UTCTimestamp {
   return (Math.floor(new Date(isoString).getTime() / 1000) + DISPLAY_UTC_OFFSET_SECONDS) as UTCTimestamp
@@ -52,12 +49,13 @@ function formatDisplayTime(time: Time): string {
 
 interface PriceChartProps {
   symbol: MarketSymbol
+  timeframe: Timeframe
   candles: Candle[]
   /** The open signal for this symbol/timeframe, if any — drawn as entry/stop/target lines. */
   signal?: Signal | null
 }
 
-export function PriceChart({ symbol, candles, signal }: PriceChartProps) {
+export function PriceChart({ symbol, timeframe, candles, signal }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -114,10 +112,9 @@ export function PriceChart({ symbol, candles, signal }: PriceChartProps) {
     const series = seriesRef.current
     if (!series) return
 
+    const precision = pricePrecision(symbol)
     series.applyOptions({
-      priceFormat: FOUR_DECIMAL_SYMBOLS.has(symbol)
-        ? { type: 'price', precision: 4, minMove: 0.0001 }
-        : { type: 'price', precision: 2, minMove: 0.01 },
+      priceFormat: { type: 'price', precision, minMove: 10 ** -precision },
     })
   }, [symbol])
 
@@ -161,5 +158,5 @@ export function PriceChart({ symbol, candles, signal }: PriceChartProps) {
     }
   }, [signal])
 
-  return <div ref={containerRef} className="w-full" />
+  return <div ref={containerRef} className="w-full" role="img" aria-label={describeChart(symbol, timeframe, candles)} />
 }

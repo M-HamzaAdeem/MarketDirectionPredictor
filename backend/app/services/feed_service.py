@@ -31,6 +31,8 @@ could run at all (see decisions.md).
 import asyncio
 import logging
 
+import httpx
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
@@ -42,6 +44,18 @@ from app.services.candle_close_handler import CandleCloseHandler
 from app.storage.repositories.candle_repository import CandleRepository
 
 logger = logging.getLogger(__name__)
+
+# The expected external-failure surface for a single symbol/timeframe's
+# backfill: httpx.HTTPError covers both network-level failures (timeout,
+# connection refused) and non-2xx responses; RuntimeError is how
+# TwelveDataProvider signals a provider-level API error in its response
+# body; KeyError/ValueError cover an unmapped symbol/timeframe or a
+# malformed response row (bad datetime format, missing field);
+# SQLAlchemyError covers a transient SQLite lock from concurrent access by
+# the live feed. Anything outside this set (e.g. an AttributeError from a
+# real coding bug) is deliberately allowed to propagate rather than being
+# silently absorbed as if it were one of these expected cases.
+_EXPECTED_BACKFILL_ERRORS = (httpx.HTTPError, RuntimeError, KeyError, ValueError, SQLAlchemyError)
 
 _INITIAL_RECONNECT_DELAY_SECONDS = 1.0
 _MAX_RECONNECT_DELAY_SECONDS = 30.0
@@ -85,11 +99,13 @@ class FeedService:
                 return
             candles = await self._provider.fetch_history(symbol, timeframe, _BACKFILL_CANDLE_COUNT)
             await repository.save_many_if_missing(candles)
-        except Exception:
+        except _EXPECTED_BACKFILL_ERRORS:
             # One symbol/timeframe failing to backfill (rate limit, transient
             # network error, unsupported pair) shouldn't stop the rest or
             # abort startup — it just starts that pair cold, same as before
-            # this feature existed.
+            # this feature existed. A genuine coding bug outside this set
+            # (e.g. AttributeError) is deliberately not caught here — see
+            # _EXPECTED_BACKFILL_ERRORS.
             logger.exception("Historical backfill failed for %s/%s", symbol.value, timeframe.value)
 
     async def start(self) -> None:

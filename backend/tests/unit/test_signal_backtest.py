@@ -2,7 +2,6 @@ from datetime import UTC, datetime, timedelta
 
 from app.core.constants import Symbol, Timeframe
 from app.feeds.base import Candle
-from app.prediction.signal import SignalStatus
 from app.backtesting.signal_backtest import run_signal_backtest
 
 

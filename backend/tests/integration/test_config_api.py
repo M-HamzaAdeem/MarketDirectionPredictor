@@ -2,11 +2,17 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.api.routers import config
+from app.core.config import Settings, get_settings
 
 
 async def test_get_config_returns_the_effective_settings_and_strategy_parameters() -> None:
     app = FastAPI()
     app.include_router(config.router)
+    # get_settings() otherwise reads the developer's real .env (e.g.
+    # FEED_PROVIDER=twelve_data locally) -- override with defaults-only
+    # Settings so this test verifies the endpoint's shape/values, not
+    # whatever machine it happens to run on.
+    app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

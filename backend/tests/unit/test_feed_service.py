@@ -266,6 +266,19 @@ async def test_backfill_skips_fetch_when_already_sufficient(session_factory) -> 
     assert provider.fetch_calls == []
 
 
+async def test_backfill_propagates_an_unexpected_error_instead_of_swallowing_it(session_factory) -> None:
+    # AttributeError stands in for a genuine coding bug — outside the
+    # narrowed set of expected external-failure types (httpx.HTTPError,
+    # RuntimeError, KeyError, ValueError, SQLAlchemyError), so it must not
+    # be silently absorbed as if it were a routine backfill failure.
+    provider = _HistoryProvider({(Symbol.XAUUSD, Timeframe.M15): AttributeError("simulated coding bug")})
+    settings = Settings(symbols=[Symbol.XAUUSD], timeframes=[Timeframe.M15])
+    service = FeedService(provider, settings, _RecordingBroadcaster(), session_factory, [])
+
+    with pytest.raises(AttributeError):
+        await service.backfill()
+
+
 async def test_backfill_one_symbol_failing_does_not_abort_the_rest(session_factory) -> None:
     base = datetime(2026, 1, 1, tzinfo=UTC)
     good_candles = [_history_candle(100.0, base, symbol=Symbol.EURUSD)]

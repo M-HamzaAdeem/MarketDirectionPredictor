@@ -1,6 +1,9 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useMarketStore } from '../store/marketStore'
 import type { WebSocketMessage } from '../types/websocket'
+import { candlesKey } from './useCandles'
+import { signalHistoryKey } from './useSignalHistory'
 
 const WS_URL: string = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8000/ws'
 const INITIAL_RECONNECT_DELAY_MS = 1000
@@ -15,6 +18,7 @@ export function useMarketSocket(): void {
   const setPrice = useMarketStore((state) => state.setPrice)
   const setPrediction = useMarketStore((state) => state.setPrediction)
   const upsertSignal = useMarketStore((state) => state.upsertSignal)
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     let socket: WebSocket | null = null
@@ -39,9 +43,19 @@ export function useMarketSocket(): void {
           break
         case 'prediction':
           setPrediction(message)
+          // A prediction is only ever broadcast when its symbol/timeframe's
+          // candle just closed (PredictionService reacts to every close,
+          // not just some), so this is the precise signal that the Symbol
+          // Detail chart's candle list is now stale — unlike price ticks,
+          // which fire far too often to invalidate on. Partial queryKey
+          // match invalidates every `limit` variant already fetched.
+          void queryClient.invalidateQueries({ queryKey: candlesKey(message.symbol, message.timeframe) })
           break
         case 'signal':
           upsertSignal(message)
+          // Same reasoning: a signal message means this symbol's history
+          // just changed (opened or resolved), so its history table is stale.
+          void queryClient.invalidateQueries({ queryKey: signalHistoryKey(message.symbol) })
           break
       }
     }
@@ -83,5 +97,5 @@ export function useMarketSocket(): void {
         socket.close()
       }
     }
-  }, [setFeedStatus, setPrice, setPrediction, upsertSignal])
+  }, [setFeedStatus, setPrice, setPrediction, upsertSignal, queryClient])
 }

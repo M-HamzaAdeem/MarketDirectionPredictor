@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from app.core.constants import Direction, Symbol, Timeframe
 from app.feeds.base import Candle
 from app.features.fibonacci import OteZone, compute_ote_zone
-from app.features.structure import StructureBreak, StructureEvent, Sweep, SwingKind, SwingPoint
+from app.features.structure import StructureBreak, StructureEvent, SwingKind, SwingPoint
 from app.prediction.signal_builder import (
     MIN_RISK_REWARD,
     _Setup,

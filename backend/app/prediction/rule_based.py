@@ -7,8 +7,16 @@ against real outcomes yet. An ML strategy can replace this later behind
 the same PredictionStrategy interface without touching the engine or API.
 
 An indicator that isn't available yet (not enough candle history) is
-excluded from the vote entirely, rather than counted as neutral — it
-shouldn't silently drag confidence down just because the symbol is new.
+excluded from the vote entirely, rather than counted as neutral — a
+neutral (zero) vote contributes nothing to the score either way, so this
+is about keeping `reason` truthful (no "RSI neutral" fragment for an RSI
+that was never actually computed), not about the score or confidence math.
+
+Confidence (`_combine`) is the weighted score relative to the total
+*possible* weight (all 4 indicators), not just the weight of votes
+actually present — so one indicator voting unanimously on a brand-new
+symbol reads as moderate confidence, not full confidence, because most
+of the evidence this strategy can consider simply hasn't been checked yet.
 """
 
 from app.core.constants import Direction
@@ -19,6 +27,7 @@ _STRUCTURE_WEIGHT = 2.0
 _TREND_WEIGHT = 1.0
 _RSI_WEIGHT = 1.0
 _MOMENTUM_WEIGHT = 1.0
+_TOTAL_POSSIBLE_WEIGHT = _STRUCTURE_WEIGHT + _TREND_WEIGHT + _RSI_WEIGHT + _MOMENTUM_WEIGHT
 
 RSI_BULLISH_THRESHOLD = 60.0
 RSI_BEARISH_THRESHOLD = 40.0
@@ -83,9 +92,14 @@ def _combine(votes: list[_Vote]) -> PredictionSignal:
     if not votes:
         return PredictionSignal(direction=Direction.NEUTRAL, confidence=0.0, reason="insufficient data")
 
-    total_weight = sum(weight for weight, _, _ in votes)
     score = sum(weight * vote for weight, vote, _ in votes)
-    confidence = min(100.0, abs(score) / total_weight * 100.0) if total_weight else 0.0
+
+    # Scaled against the total *possible* weight (all 4 indicators), not just
+    # the weight of votes actually present — so a lone unanimous vote (e.g.
+    # only structure available on a brand-new symbol) reads as partial
+    # confidence, not 100%, since most of the evidence this strategy
+    # considers simply hasn't been checked yet. See [[rule-based-confidence-calibration]].
+    confidence = min(100.0, abs(score) / _TOTAL_POSSIBLE_WEIGHT * 100.0)
 
     if score > 0:
         direction = Direction.BULLISH

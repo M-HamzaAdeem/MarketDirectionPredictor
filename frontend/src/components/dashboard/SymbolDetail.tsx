@@ -35,7 +35,7 @@ export function SymbolDetail() {
         onTimeframeChange={setTimeframe}
       />
 
-      <PriceChart symbol={symbol} candles={candles} signal={openSignal} />
+      <PriceChart symbol={symbol} timeframe={timeframe} candles={candles} signal={openSignal} />
 
       <div>
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Performance</h3>
