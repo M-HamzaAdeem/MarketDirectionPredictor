@@ -21,6 +21,7 @@ from app.core.constants import Timeframe
 from app.feeds.base import Candle
 from app.prediction.signal_builder import build_signal, eligible_entry_candles
 from app.services.broadcast_service import BroadcastService
+from app.storage.models import CandleColumns, CandleORM, SignalColumns, SignalORM
 from app.storage.repositories.candle_repository import CandleRepository
 from app.storage.repositories.signal_repository import SignalRepository
 
@@ -33,16 +34,28 @@ CANDLE_WINDOW_15M = 20
 
 
 class SignalService:
-    def __init__(self, broadcaster: BroadcastService, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    """`candle_model`/`signal_model` default to the Twelve Data pipeline's
+    tables; pass the TradingView equivalents to run this same logic
+    against that fully separate pipeline instead."""
+
+    def __init__(
+        self,
+        broadcaster: BroadcastService,
+        session_factory: async_sessionmaker[AsyncSession],
+        candle_model: type[CandleColumns] = CandleORM,
+        signal_model: type[SignalColumns] = SignalORM,
+    ) -> None:
         self._broadcaster = broadcaster
         self._session_factory = session_factory
+        self._candle_model = candle_model
+        self._signal_model = signal_model
 
     async def on_candle_closed(self, candle: Candle) -> None:
         if candle.timeframe != Timeframe.M15:
             return
 
         async with self._session_factory() as session:
-            signal_repository = SignalRepository(session)
+            signal_repository = SignalRepository(session, model=self._signal_model)
             # One open signal per symbol at a time: build_signal() re-derives
             # the same still-open setup on every 15m close for as long as its
             # 1H bias/structure hasn't changed, so without this guard the
@@ -50,7 +63,7 @@ class SignalService:
             if await signal_repository.get_open(candle.symbol):
                 return
 
-            candle_repository = CandleRepository(session)
+            candle_repository = CandleRepository(session, model=self._candle_model)
             candles_4h = await candle_repository.get_recent(candle.symbol, Timeframe.H4, limit=CANDLE_WINDOW_4H)
             candles_1h = await candle_repository.get_recent(candle.symbol, Timeframe.H1, limit=CANDLE_WINDOW_1H)
             candles_15m = await candle_repository.get_recent(

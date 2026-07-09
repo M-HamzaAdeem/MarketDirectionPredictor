@@ -36,6 +36,7 @@ def get_config(settings: Settings = Depends(get_settings)) -> ConfigOut:
         mock_time_acceleration=settings.mock_time_acceleration,
         symbols=settings.symbols,
         timeframes=settings.timeframes,
+        tradingview_enabled=settings.tradingview_enabled,
         min_risk_reward=MIN_RISK_REWARD,
         ote_shallow_ratio=DEFAULT_OTE_SHALLOW_RATIO,
         ote_deep_ratio=DEFAULT_OTE_DEEP_RATIO,

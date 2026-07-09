@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { DisclaimerBanner } from '../dashboard/DisclaimerBanner'
 import { FeedStatusIndicator } from '../dashboard/FeedStatusIndicator'
+import { SourceToggle } from '../dashboard/SourceToggle'
 
 const NAV_LINK_BASE_CLASS = 'rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400'
 
@@ -31,7 +32,10 @@ export function AppShell({ children }: AppShellProps) {
             </NavLink>
           </nav>
         </div>
-        <FeedStatusIndicator />
+        <div className="flex items-center gap-4">
+          <SourceToggle />
+          <FeedStatusIndicator />
+        </div>
       </header>
 
       <main className="flex-1 space-y-8 px-6 py-6">{children}</main>

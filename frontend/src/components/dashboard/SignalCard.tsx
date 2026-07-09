@@ -1,11 +1,11 @@
-import { useMarketStore } from '../../store/marketStore'
+import { useActivePrices } from '../../store/marketStore'
 import type { Signal } from '../../types/signal'
 import { computeCurrentRiskReward } from '../../utils/currentRiskReward'
 import { DirectionBadge } from './DirectionBadge'
 import { SignalStatusBadge } from './SignalStatusBadge'
 
 export function SignalCard({ signal }: { signal: Signal }) {
-  const currentPrice = useMarketStore((state) => state.prices[signal.symbol]?.price)
+  const currentPrice = useActivePrices()[signal.symbol]?.price
   const isOpen = signal.status === 'open'
 
   // Only meaningful while the trade is still live — a resolved signal

@@ -10,6 +10,7 @@ from app.api.routers import candles
 from app.core.constants import Symbol, Timeframe
 from app.feeds.base import Candle
 from app.storage.database import Base, get_session
+from app.storage.models import TradingViewCandleORM
 from app.storage.repositories.candle_repository import CandleRepository
 
 
@@ -81,3 +82,28 @@ async def test_get_candles_rejects_unknown_timeframe(api: _ApiFixture) -> None:
     response = await api.client.get("/candles/XAUUSD/2m")
 
     assert response.status_code == 422
+
+
+async def test_get_candles_source_param_reads_the_tradingview_table_not_the_default(api: _ApiFixture) -> None:
+    await _seed_candle(api.session_factory)  # only in the default (Twelve Data) table
+
+    async with api.session_factory() as session:
+        await CandleRepository(session, model=TradingViewCandleORM).save(
+            Candle(
+                symbol=Symbol.XAUUSD,
+                timeframe=Timeframe.M1,
+                open_time=datetime(2026, 1, 1, 11, 0, tzinfo=UTC),
+                close_time=datetime(2026, 1, 1, 11, 1, tzinfo=UTC),
+                open=1.0,
+                high=1.5,
+                low=0.5,
+                close=1.2,
+                volume=0.0,
+            )
+        )
+
+    default_response = await api.client.get("/candles/XAUUSD/1m")
+    tradingview_response = await api.client.get("/candles/XAUUSD/1m", params={"source": "tradingview"})
+
+    assert [c["close"] for c in default_response.json()] == [2352.0]
+    assert [c["close"] for c in tradingview_response.json()] == [1.2]

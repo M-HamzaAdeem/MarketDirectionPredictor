@@ -11,6 +11,7 @@ from app.core.constants import Direction, Symbol, Timeframe
 from app.feeds.base import Candle
 from app.prediction.signal import Signal, SignalStatus
 from app.storage.database import Base, get_session
+from app.storage.models import TradingViewSignalORM
 from app.storage.repositories.candle_repository import CandleRepository
 from app.storage.repositories.signal_repository import SignalRepository
 
@@ -197,3 +198,23 @@ async def test_get_signal_history_includes_resolved_signals(api: _ApiFixture) ->
 async def test_get_signal_history_rejects_an_unknown_symbol(api: _ApiFixture) -> None:
     response = await api.client.get("/signals/BTCUSD/history")
     assert response.status_code == 422
+
+
+async def test_source_tradingview_reads_and_writes_its_own_signal_table(api: _ApiFixture) -> None:
+    # An open signal exists in the default (Twelve Data) table only.
+    async with api.session_factory() as session:
+        await SignalRepository(session).save(_signal())
+
+    tradingview_open = await api.client.get("/signals/open", params={"source": "tradingview"})
+    assert tradingview_open.json() == []  # must not see the Twelve Data signal
+
+    async with api.session_factory() as session:
+        await SignalRepository(session, model=TradingViewSignalORM).save(_signal(entry=1.0, stop=0.9, target=1.3))
+
+    tradingview_open = await api.client.get("/signals/open", params={"source": "tradingview"})
+    default_open = await api.client.get("/signals/open")
+
+    assert len(tradingview_open.json()) == 1
+    assert tradingview_open.json()[0]["entry"] == 1.0
+    assert len(default_open.json()) == 1
+    assert default_open.json()[0]["entry"] == 2350.0

@@ -8,6 +8,9 @@ export interface Config {
   mock_time_acceleration: number
   symbols: MarketSymbol[]
   timeframes: Timeframe[]
+  /** Whether the second, independent TradingView pipeline is running —
+   * gates whether SourceToggle is shown at all. */
+  tradingview_enabled: boolean
 
   min_risk_reward: number
   ote_shallow_ratio: number

@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useMarketStore } from '../store/marketStore'
+import { ALL_DATA_SOURCES } from '../types/market'
 import type { WebSocketMessage } from '../types/websocket'
 import { candlesKey } from './useCandles'
 import { signalHistoryKey } from './useSignalHistory'
@@ -36,26 +37,30 @@ export function useMarketSocket(): void {
 
       switch (message.type) {
         case 'feed_status':
-          setFeedStatus(message.status, message.timestamp)
+          setFeedStatus(message.source, message.status, message.timestamp)
           break
         case 'price':
-          setPrice({ symbol: message.symbol, price: message.price, timestamp: message.timestamp })
+          setPrice(message.source, { symbol: message.symbol, price: message.price, timestamp: message.timestamp })
           break
         case 'prediction':
-          setPrediction(message)
+          setPrediction(message.source, message)
           // A prediction is only ever broadcast when its symbol/timeframe's
           // candle just closed (PredictionService reacts to every close,
           // not just some), so this is the precise signal that the Symbol
           // Detail chart's candle list is now stale — unlike price ticks,
           // which fire far too often to invalidate on. Partial queryKey
-          // match invalidates every `limit` variant already fetched.
-          void queryClient.invalidateQueries({ queryKey: candlesKey(message.symbol, message.timeframe) })
+          // match invalidates every `limit` variant already fetched. Source
+          // is part of the key too, so a TradingView close can never
+          // invalidate the Twelve Data cache entry for the same pair.
+          void queryClient.invalidateQueries({
+            queryKey: candlesKey(message.symbol, message.timeframe, message.source),
+          })
           break
         case 'signal':
-          upsertSignal(message)
+          upsertSignal(message.source, message)
           // Same reasoning: a signal message means this symbol's history
           // just changed (opened or resolved), so its history table is stale.
-          void queryClient.invalidateQueries({ queryKey: signalHistoryKey(message.symbol) })
+          void queryClient.invalidateQueries({ queryKey: signalHistoryKey(message.symbol, message.source) })
           break
       }
     }
@@ -76,8 +81,13 @@ export function useMarketSocket(): void {
       socket.onerror = () => {
         // The browser follows this with onclose, which schedules the
         // reconnect — this handler only makes the disconnected state
-        // visible instead of only appearing in the console.
-        setFeedStatus('disconnected', new Date().toISOString())
+        // visible instead of only appearing in the console. Both sources
+        // share this one socket, so losing it means losing updates for
+        // both, not just whichever is currently displayed.
+        const timestamp = new Date().toISOString()
+        for (const source of ALL_DATA_SOURCES) {
+          setFeedStatus(source, 'disconnected', timestamp)
+        }
       }
       socket.onclose = () => {
         if (!cancelled) {

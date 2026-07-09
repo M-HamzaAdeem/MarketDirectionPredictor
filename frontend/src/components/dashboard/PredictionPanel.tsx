@@ -1,5 +1,5 @@
 import { usePredictionsBootstrap } from '../../hooks/usePredictionsBootstrap'
-import { useMarketStore } from '../../store/marketStore'
+import { useActivePredictions } from '../../store/marketStore'
 import { ALL_SYMBOLS, ALL_TIMEFRAMES } from '../../types/market'
 import { computeOverall, type OverallCall } from '../../utils/predictionOverall'
 import { DirectionBadge } from './DirectionBadge'
@@ -18,7 +18,7 @@ export function PredictionPanel() {
   // stored `predictions` object directly (a stable reference Zustand only
   // replaces on actual change) rather than a derived array, so there's no
   // derived-container-in-selector footgun to guard against with useShallow.
-  const predictions = useMarketStore((state) => state.predictions)
+  const predictions = useActivePredictions()
 
   if (Object.keys(predictions).length === 0) {
     return <p className="text-sm text-slate-400">No predictions yet.</p>

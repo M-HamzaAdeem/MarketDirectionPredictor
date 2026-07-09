@@ -1,18 +1,22 @@
 """WebSocket message envelopes broadcast to connected dashboard clients.
 The `type` literal discriminates the payload so the frontend can dispatch
-on shape without guessing."""
+on shape without guessing. Every message also carries `source` (which of
+the two independent pipelines it came from) — required, not defaulted, so
+a message can't be constructed and silently mislabeled outside of
+BroadcastService, the one place that stamps it."""
 
 from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from app.core.constants import Direction, FeedStatus, Symbol, Timeframe
+from app.core.constants import DataSource, Direction, FeedStatus, Symbol, Timeframe
 from app.prediction.signal import SignalStatus
 
 
 class PriceMessage(BaseModel):
     type: Literal["price"] = "price"
+    source: DataSource
     symbol: Symbol
     price: float
     timestamp: datetime
@@ -20,6 +24,7 @@ class PriceMessage(BaseModel):
 
 class PredictionMessage(BaseModel):
     type: Literal["prediction"] = "prediction"
+    source: DataSource
     symbol: Symbol
     timeframe: Timeframe
     direction: Direction
@@ -31,6 +36,7 @@ class PredictionMessage(BaseModel):
 
 class FeedStatusMessage(BaseModel):
     type: Literal["feed_status"] = "feed_status"
+    source: DataSource
     status: FeedStatus
     timestamp: datetime
 
@@ -42,6 +48,7 @@ class SignalMessage(BaseModel):
     already has."""
 
     type: Literal["signal"] = "signal"
+    source: DataSource
     id: int
     symbol: Symbol
     entry_timeframe: Timeframe

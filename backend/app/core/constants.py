@@ -39,6 +39,15 @@ class FeedProvider(str, Enum):
     TWELVE_DATA = "twelve_data"
 
 
+class DataSource(str, Enum):
+    """Which independent pipeline a candle/prediction/signal/WS message
+    belongs to — Twelve Data and TradingView run simultaneously, each with
+    its own tables and handler pipeline; never mixed at the storage layer."""
+
+    TWELVE_DATA = "twelve_data"
+    TRADINGVIEW = "tradingview"
+
+
 class PredictionStrategyKind(str, Enum):
     RULE_BASED = "rule_based"
     ML = "ml"

@@ -11,15 +11,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import Direction, Symbol, Timeframe
 from app.prediction.signal import Signal, SignalStatus
-from app.storage.models import SignalORM
+from app.storage.models import SignalColumns, SignalORM
 
 
 class SignalRepository:
-    def __init__(self, session: AsyncSession) -> None:
+    """`model` defaults to SignalORM (the Twelve Data pipeline's table);
+    pass `model=TradingViewSignalORM` to operate on the fully separate
+    TradingView table instead — see DataSource in core/constants.py. Both
+    concrete classes share SignalColumns, so `type[SignalColumns]` is a
+    type each genuinely satisfies (not a false subtype relationship)."""
+
+    def __init__(self, session: AsyncSession, model: type[SignalColumns] = SignalORM) -> None:
         self._session = session
+        self._model = model
 
     async def save(self, signal: Signal) -> Signal:
-        row = SignalORM(
+        row = self._model(
             symbol=signal.symbol.value,
             entry_timeframe=signal.entry_timeframe.value,
             direction=signal.direction.value,
@@ -39,17 +46,17 @@ class SignalRepository:
         return _to_domain(row)
 
     async def get_open(self, symbol: Symbol | None = None) -> list[Signal]:
-        stmt = select(SignalORM).where(SignalORM.status == SignalStatus.OPEN.value)
+        stmt = select(self._model).where(self._model.status == SignalStatus.OPEN.value)
         if symbol is not None:
-            stmt = stmt.where(SignalORM.symbol == symbol.value)
+            stmt = stmt.where(self._model.symbol == symbol.value)
         result = await self._session.execute(stmt)
         return [_to_domain(row) for row in result.scalars().all()]
 
     async def get_recent(self, symbol: Symbol, limit: int = 100) -> list[Signal]:
         stmt = (
-            select(SignalORM)
-            .where(SignalORM.symbol == symbol.value)
-            .order_by(SignalORM.opened_at.desc())
+            select(self._model)
+            .where(self._model.symbol == symbol.value)
+            .order_by(self._model.opened_at.desc())
             .limit(limit)
         )
         result = await self._session.execute(stmt)
@@ -58,7 +65,7 @@ class SignalRepository:
     async def update_outcome(
         self, signal_id: int, status: SignalStatus, closed_at: datetime, realized_rr: float
     ) -> None:
-        row = await self._session.get(SignalORM, signal_id)
+        row = await self._session.get(self._model, signal_id)
         if row is None:
             return
         row.status = status.value
@@ -67,7 +74,7 @@ class SignalRepository:
         await self._session.commit()
 
 
-def _to_domain(row: SignalORM) -> Signal:
+def _to_domain(row: SignalColumns) -> Signal:
     return Signal(
         id=row.id,
         symbol=Symbol(row.symbol),

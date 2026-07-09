@@ -19,6 +19,13 @@ export type Direction = 'bullish' | 'bearish' | 'neutral'
 
 export type FeedStatus = 'mock' | 'live' | 'degraded' | 'disconnected'
 
+// Which of the two fully independent backend pipelines a piece of data
+// came from — Twelve Data and TradingView run simultaneously, each with
+// its own tables, so this is never inferred, only read off the wire.
+export type DataSource = 'twelve_data' | 'tradingview'
+
+export const ALL_DATA_SOURCES = ['twelve_data', 'tradingview'] as const satisfies readonly DataSource[]
+
 export interface Candle {
   open_time: string
   close_time: string

@@ -10,6 +10,7 @@ from app.api.routers import predictions
 from app.core.constants import Symbol, Timeframe
 from app.feeds.base import Candle
 from app.storage.database import Base, get_session
+from app.storage.models import TradingViewCandleORM
 from app.storage.repositories.candle_repository import CandleRepository
 
 
@@ -107,3 +108,46 @@ async def test_repeated_calls_to_latest_append_rather_than_overwrite(api: _ApiFi
 
     history_response = await api.client.get("/predictions/XAUUSD/1m/history")
     assert len(history_response.json()) == 2
+
+
+async def test_source_tradingview_computes_from_its_own_candle_table_and_logs_separately(api: _ApiFixture) -> None:
+    # Only the default (Twelve Data) table has candles -- the TradingView
+    # table is empty, so its "latest" must 404 rather than silently
+    # borrowing the other source's candles.
+    await _seed_candles(api.session_factory, [100.0 + i for i in range(5)])
+
+    no_tradingview_candles_yet = await api.client.get(
+        "/predictions/XAUUSD/1m/latest", params={"source": "tradingview"}
+    )
+    assert no_tradingview_candles_yet.status_code == 404
+
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    async with api.session_factory() as session:
+        repository = CandleRepository(session, model=TradingViewCandleORM)
+        for i in range(5):
+            await repository.save(
+                Candle(
+                    symbol=Symbol.XAUUSD,
+                    timeframe=Timeframe.M1,
+                    open_time=base + timedelta(minutes=i),
+                    close_time=base + timedelta(minutes=i + 1),
+                    open=1.0 + i,
+                    high=1.5 + i,
+                    low=0.5 + i,
+                    close=1.0 + i,
+                    volume=0.0,
+                )
+            )
+
+    tradingview_response = await api.client.get(
+        "/predictions/XAUUSD/1m/latest", params={"source": "tradingview"}
+    )
+    assert tradingview_response.status_code == 200
+    assert tradingview_response.json()["price"] == 5.0  # TradingView's own candles, not Twelve Data's 104.0
+
+    # Logged to the TradingView prediction table only -- the default
+    # history (still just the one entry from earlier in this test) is unaffected.
+    default_history = await api.client.get("/predictions/XAUUSD/1m/history")
+    tradingview_history = await api.client.get("/predictions/XAUUSD/1m/history", params={"source": "tradingview"})
+    assert len(default_history.json()) == 0  # this test never called .../latest without source=tradingview
+    assert len(tradingview_history.json()) == 1

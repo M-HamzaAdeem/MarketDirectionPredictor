@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from app.core.constants import Symbol
+from app.core.constants import DataSource, Symbol
 from app.schemas.websocket_messages import PriceMessage
 from app.services.connection_manager import ConnectionManager
 
@@ -21,7 +21,7 @@ class _FakeWebSocket:
 
 
 def _price_message(price: float = 2350.0) -> PriceMessage:
-    return PriceMessage(symbol=Symbol.XAUUSD, price=price, timestamp=datetime.now(UTC))
+    return PriceMessage(source=DataSource.TWELVE_DATA, symbol=Symbol.XAUUSD, price=price, timestamp=datetime.now(UTC))
 
 
 async def test_connect_accepts_and_registers_the_websocket() -> None:

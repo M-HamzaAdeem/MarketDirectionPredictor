@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_prediction_engine
-from app.core.constants import Direction, Symbol, Timeframe
+from app.api.source_models import candle_model_for, prediction_model_for
+from app.core.constants import DataSource, Direction, Symbol, Timeframe
 from app.prediction.base import Prediction
 from app.prediction.engine import CANDLE_WINDOW, PredictionEngine
 from app.schemas.prediction import PredictionOut
@@ -28,10 +29,13 @@ _MAX_HISTORY_LIMIT = 500
 async def get_latest_prediction(
     symbol: Symbol,
     timeframe: Timeframe,
+    source: DataSource = Query(default=DataSource.TWELVE_DATA),
     engine: PredictionEngine = Depends(get_prediction_engine),
     session: AsyncSession = Depends(get_session),
 ) -> PredictionOut:
-    candles = await CandleRepository(session).get_recent(symbol, timeframe, limit=CANDLE_WINDOW)
+    candles = await CandleRepository(session, model=candle_model_for(source)).get_recent(
+        symbol, timeframe, limit=CANDLE_WINDOW
+    )
     if not candles:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -39,7 +43,7 @@ async def get_latest_prediction(
         )
 
     prediction = engine.run(symbol, timeframe, candles)
-    await PredictionRepository(session).save(prediction)
+    await PredictionRepository(session, model=prediction_model_for(source)).save(prediction)
     return _to_schema(prediction)
 
 
@@ -48,9 +52,12 @@ async def get_prediction_history(
     symbol: Symbol,
     timeframe: Timeframe,
     limit: int = Query(default=100, ge=1, le=_MAX_HISTORY_LIMIT),
+    source: DataSource = Query(default=DataSource.TWELVE_DATA),
     session: AsyncSession = Depends(get_session),
 ) -> list[PredictionOut]:
-    predictions = await PredictionRepository(session).get_recent(symbol, timeframe, limit=limit)
+    predictions = await PredictionRepository(session, model=prediction_model_for(source)).get_recent(
+        symbol, timeframe, limit=limit
+    )
     return [
         PredictionOut(
             symbol=Symbol(row.symbol),

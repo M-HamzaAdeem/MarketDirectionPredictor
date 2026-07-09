@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.core.constants import Direction, FeedStatus, Symbol, Timeframe
+from app.core.constants import DataSource, Direction, FeedStatus, Symbol, Timeframe
 from app.feeds.base import Tick
 from app.prediction.base import Prediction
 from app.prediction.signal import Signal, SignalStatus
@@ -20,7 +20,7 @@ class _RecordingConnectionManager:
 
 async def test_broadcast_price_sends_a_price_message() -> None:
     manager = _RecordingConnectionManager()
-    service = BroadcastService(manager)
+    service = BroadcastService(manager, source=DataSource.TWELVE_DATA)
     tick = Tick(symbol=Symbol.XAUUSD, price=2350.0, timestamp=datetime.now(UTC))
 
     await service.broadcast_price(tick)
@@ -30,11 +30,24 @@ async def test_broadcast_price_sends_a_price_message() -> None:
     assert isinstance(message, PriceMessage)
     assert message.symbol == Symbol.XAUUSD
     assert message.price == 2350.0
+    assert message.source == DataSource.TWELVE_DATA
+
+
+async def test_broadcast_price_tags_the_message_with_the_service_instances_fixed_source() -> None:
+    manager = _RecordingConnectionManager()
+    service = BroadcastService(manager, source=DataSource.TRADINGVIEW)
+    tick = Tick(symbol=Symbol.XAUUSD, price=2350.0, timestamp=datetime.now(UTC))
+
+    await service.broadcast_price(tick)
+
+    message = manager.broadcasted[0]
+    assert isinstance(message, PriceMessage)
+    assert message.source == DataSource.TRADINGVIEW
 
 
 async def test_broadcast_prediction_sends_a_prediction_message() -> None:
     manager = _RecordingConnectionManager()
-    service = BroadcastService(manager)
+    service = BroadcastService(manager, source=DataSource.TWELVE_DATA)
     prediction = Prediction(
         symbol=Symbol.EURUSD,
         timeframe=Timeframe.M5,
@@ -56,7 +69,7 @@ async def test_broadcast_prediction_sends_a_prediction_message() -> None:
 
 async def test_broadcast_feed_status_sends_a_feed_status_message() -> None:
     manager = _RecordingConnectionManager()
-    service = BroadcastService(manager)
+    service = BroadcastService(manager, source=DataSource.TWELVE_DATA)
 
     await service.broadcast_feed_status(FeedStatus.MOCK)
 
@@ -85,7 +98,7 @@ def _signal(**overrides: object) -> Signal:
 
 async def test_broadcast_signal_sends_a_signal_message_for_a_new_open_signal() -> None:
     manager = _RecordingConnectionManager()
-    service = BroadcastService(manager)
+    service = BroadcastService(manager, source=DataSource.TWELVE_DATA)
 
     await service.broadcast_signal(_signal(details={"poi_type": "fair_value_gap"}))
 
@@ -102,7 +115,7 @@ async def test_broadcast_signal_sends_a_signal_message_for_a_new_open_signal() -
 
 async def test_broadcast_signal_sends_a_signal_message_for_a_resolved_signal() -> None:
     manager = _RecordingConnectionManager()
-    service = BroadcastService(manager)
+    service = BroadcastService(manager, source=DataSource.TWELVE_DATA)
     closed_at = datetime.now(UTC)
 
     await service.broadcast_signal(
@@ -117,7 +130,7 @@ async def test_broadcast_signal_sends_a_signal_message_for_a_resolved_signal() -
 
 async def test_broadcast_signal_rejects_an_unpersisted_signal() -> None:
     manager = _RecordingConnectionManager()
-    service = BroadcastService(manager)
+    service = BroadcastService(manager, source=DataSource.TWELVE_DATA)
 
     with pytest.raises(ValueError, match="hasn't been persisted"):
         await service.broadcast_signal(_signal(id=None))

@@ -17,7 +17,8 @@ wouldn't also produce live.
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.constants import Symbol, Timeframe
+from app.api.source_models import candle_model_for, signal_model_for
+from app.core.constants import DataSource, Symbol, Timeframe
 from app.prediction.signal import Signal
 from app.prediction.signal_builder import build_signal, eligible_entry_candles
 from app.schemas.signal import SignalOut
@@ -34,15 +35,17 @@ _MAX_HISTORY_LIMIT = 500
 @router.get("/open", response_model=list[SignalOut])
 async def get_open_signals(
     symbol: Symbol | None = None,
+    source: DataSource = Query(default=DataSource.TWELVE_DATA),
     session: AsyncSession = Depends(get_session),
 ) -> list[SignalOut]:
-    signals = await SignalRepository(session).get_open(symbol)
+    signals = await SignalRepository(session, model=signal_model_for(source)).get_open(symbol)
     return [_to_schema(signal) for signal in signals]
 
 
 @router.get("/{symbol}/latest", response_model=SignalOut)
 async def get_latest_signal(
     symbol: Symbol,
+    source: DataSource = Query(default=DataSource.TWELVE_DATA),
     session: AsyncSession = Depends(get_session),
 ) -> SignalOut:
     # A GET that can write is a deliberate, pattern-consistent choice, not
@@ -50,13 +53,13 @@ async def get_latest_signal(
     # is actually more idempotent than that one: the get_open guard below
     # means repeated calls only ever produce one row per symbol, whereas
     # predictions logs a fresh row every call.
-    signal_repository = SignalRepository(session)
+    signal_repository = SignalRepository(session, model=signal_model_for(source))
 
     open_signals = await signal_repository.get_open(symbol)
     if open_signals:
         return _to_schema(open_signals[0])
 
-    candle_repository = CandleRepository(session)
+    candle_repository = CandleRepository(session, model=candle_model_for(source))
     candles_4h = await candle_repository.get_recent(symbol, Timeframe.H4, limit=CANDLE_WINDOW_4H)
     candles_1h = await candle_repository.get_recent(symbol, Timeframe.H1, limit=CANDLE_WINDOW_1H)
     candles_15m = await candle_repository.get_recent(symbol, Timeframe.M15, limit=CANDLE_WINDOW_15M)
@@ -80,9 +83,10 @@ async def get_latest_signal(
 async def get_signal_history(
     symbol: Symbol,
     limit: int = Query(default=100, ge=1, le=_MAX_HISTORY_LIMIT),
+    source: DataSource = Query(default=DataSource.TWELVE_DATA),
     session: AsyncSession = Depends(get_session),
 ) -> list[SignalOut]:
-    signals = await SignalRepository(session).get_recent(symbol, limit=limit)
+    signals = await SignalRepository(session, model=signal_model_for(source)).get_recent(symbol, limit=limit)
     return [_to_schema(signal) for signal in signals]
 
 

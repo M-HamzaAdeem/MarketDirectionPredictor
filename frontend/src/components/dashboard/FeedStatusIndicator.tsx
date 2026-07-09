@@ -1,4 +1,4 @@
-import { useMarketStore } from '../../store/marketStore'
+import { useActiveFeedStatus } from '../../store/marketStore'
 import type { FeedStatus } from '../../types/market'
 
 const STATUS_LABEL: Record<FeedStatus, string> = {
@@ -16,7 +16,7 @@ const STATUS_COLOR: Record<FeedStatus, string> = {
 }
 
 export function FeedStatusIndicator() {
-  const feedStatus = useMarketStore((state) => state.feedStatus)
+  const feedStatus = useActiveFeedStatus()
 
   if (!feedStatus) {
     return (

@@ -16,6 +16,9 @@ class ConfigOut(BaseModel):
     mock_time_acceleration: float
     symbols: list[Symbol]
     timeframes: list[Timeframe]
+    # Whether the second, independent TradingView pipeline is running —
+    # the frontend uses this to decide whether to offer the source toggle.
+    tradingview_enabled: bool
 
     # ICT signal pipeline (see docs/signal-method.md)
     min_risk_reward: float

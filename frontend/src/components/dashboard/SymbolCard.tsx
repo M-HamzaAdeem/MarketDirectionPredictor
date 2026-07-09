@@ -1,4 +1,4 @@
-import { useMarketStore } from '../../store/marketStore'
+import { useActivePrices } from '../../store/marketStore'
 import type { MarketSymbol } from '../../types/market'
 
 interface SymbolCardProps {
@@ -6,7 +6,7 @@ interface SymbolCardProps {
 }
 
 export function SymbolCard({ symbol }: SymbolCardProps) {
-  const price = useMarketStore((state) => state.prices[symbol])
+  const price = useActivePrices()[symbol]
 
   return (
     <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">

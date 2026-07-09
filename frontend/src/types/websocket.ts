@@ -1,8 +1,9 @@
-import type { Direction, FeedStatus, MarketSymbol, Timeframe } from './market'
+import type { DataSource, Direction, FeedStatus, MarketSymbol, Timeframe } from './market'
 import type { SignalDetails, SignalStatus } from './signal'
 
 export interface PriceMessage {
   type: 'price'
+  source: DataSource
   symbol: MarketSymbol
   price: number
   timestamp: string
@@ -10,6 +11,7 @@ export interface PriceMessage {
 
 export interface PredictionMessage {
   type: 'prediction'
+  source: DataSource
   symbol: MarketSymbol
   timeframe: Timeframe
   direction: Direction
@@ -21,6 +23,7 @@ export interface PredictionMessage {
 
 export interface FeedStatusMessage {
   type: 'feed_status'
+  source: DataSource
   status: FeedStatus
   timestamp: string
 }
@@ -31,6 +34,7 @@ export interface FeedStatusMessage {
  * already held. */
 export interface SignalMessage {
   type: 'signal'
+  source: DataSource
   id: number
   symbol: MarketSymbol
   entry_timeframe: Timeframe

@@ -36,6 +36,16 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173"]
     symbols: list[Symbol] = [Symbol.XAUUSD, Symbol.EURUSD, Symbol.AUDUSD]
     timeframes: list[Timeframe] = [Timeframe.M1, Timeframe.M5, Timeframe.M15, Timeframe.H1, Timeframe.H4]
+    # A second, fully independent market-data pipeline (own tables, own
+    # PredictionService/SignalTracker/SignalService instances) running
+    # alongside Twelve Data — see app/services/tradingview_feed_service.py.
+    # Defaults off: this uses TradingView's unofficial, undocumented
+    # WebSocket protocol (no official API for this), which can break if
+    # TradingView changes it — a fresh clone shouldn't silently depend on
+    # something this fragile.
+    tradingview_enabled: bool = False
+    tradingview_exchange: str = "OANDA"
+    tradingview_poll_interval_seconds: float = Field(default=15.0, gt=0)
 
     @field_validator("cors_origins", "symbols", "timeframes", mode="before")
     @classmethod

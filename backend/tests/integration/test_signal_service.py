@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.core.constants import Direction, Symbol, Timeframe
+from app.core.constants import DataSource, Direction, Symbol, Timeframe
 from app.feeds.base import Candle
 from app.prediction.signal import SignalStatus
 from app.services.broadcast_service import BroadcastService
@@ -70,7 +70,7 @@ async def test_on_candle_closed_creates_and_broadcasts_a_signal_on_15m_close(ses
     await _seed_candles(session_factory, _bullish_setup_candles(Timeframe.H1))
 
     manager = _RecordingConnectionManager()
-    service = SignalService(BroadcastService(manager), session_factory)
+    service = SignalService(BroadcastService(manager, source=DataSource.TWELVE_DATA), session_factory)
 
     tap_candle = Candle(
         symbol=Symbol.XAUUSD,
@@ -100,7 +100,7 @@ async def test_on_candle_closed_does_not_duplicate_a_still_open_signal(session_f
     await _seed_candles(session_factory, _bullish_setup_candles(Timeframe.H1))
 
     manager = _RecordingConnectionManager()
-    service = SignalService(BroadcastService(manager), session_factory)
+    service = SignalService(BroadcastService(manager, source=DataSource.TWELVE_DATA), session_factory)
 
     tap_candle = Candle(
         symbol=Symbol.XAUUSD,
@@ -150,7 +150,7 @@ async def test_on_candle_closed_does_not_reopen_a_tap_candle_after_its_signal_re
     await _seed_candles(session_factory, _bullish_setup_candles(Timeframe.H1))
 
     manager = _RecordingConnectionManager()
-    service = SignalService(BroadcastService(manager), session_factory)
+    service = SignalService(BroadcastService(manager, source=DataSource.TWELVE_DATA), session_factory)
 
     tap_candle = Candle(
         symbol=Symbol.XAUUSD,
@@ -200,7 +200,7 @@ async def test_on_candle_closed_does_not_reopen_a_tap_candle_after_its_signal_re
 
 async def test_on_candle_closed_ignores_non_15m_candles(session_factory) -> None:
     manager = _RecordingConnectionManager()
-    service = SignalService(BroadcastService(manager), session_factory)
+    service = SignalService(BroadcastService(manager, source=DataSource.TWELVE_DATA), session_factory)
 
     hourly_candle = Candle(
         symbol=Symbol.XAUUSD,

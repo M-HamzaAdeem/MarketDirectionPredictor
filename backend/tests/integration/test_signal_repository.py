@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core.constants import Direction, Symbol, Timeframe
 from app.prediction.signal import Signal, SignalStatus
 from app.storage.database import Base
+from app.storage.models import TradingViewSignalORM
 from app.storage.repositories.signal_repository import SignalRepository
 
 
@@ -116,3 +117,22 @@ async def test_get_recent_returns_ascending_order_by_opened_at(session_factory) 
         recent = await SignalRepository(session).get_recent(Symbol.XAUUSD)
 
     assert [s.opened_at for s in recent] == [base, base + timedelta(hours=1), base + timedelta(hours=2)]
+
+
+async def test_model_param_isolates_writes_and_reads_to_the_alternate_table(session_factory) -> None:
+    # The whole TradingView dual-source feature depends on this: a save()
+    # against model=TradingViewSignalORM must be invisible to the default
+    # (Twelve Data) SignalORM table, and vice versa -- never a shared table
+    # filtered by a column, an actually separate table.
+    async with session_factory() as session:
+        await SignalRepository(session, model=TradingViewSignalORM).save(_signal())
+
+    async with session_factory() as session:
+        default_table_open = await SignalRepository(session).get_open(Symbol.XAUUSD)
+        tradingview_table_open = await SignalRepository(session, model=TradingViewSignalORM).get_open(
+            Symbol.XAUUSD
+        )
+
+    assert default_table_open == []
+    assert len(tradingview_table_open) == 1
+    assert tradingview_table_open[0].symbol == Symbol.XAUUSD

@@ -12,11 +12,13 @@ from app.storage.database import Base
 from app.storage.types import UTCDateTime
 
 
-class CandleORM(Base):
-    __tablename__ = "candles"
-    __table_args__ = (
-        Index("ix_candles_symbol_timeframe_open_time", "symbol", "timeframe", "open_time", unique=True),
-    )
+class CandleColumns:
+    """Shared column set for CandleORM and TradingViewCandleORM — a plain
+    mixin (not itself mapped to a table), so `type[CandleColumns]` is a
+    type both concrete classes genuinely satisfy. Repositories/services
+    that accept `model: type[CandleColumns]` (see CandleRepository) are
+    then type-correct when passed either one, rather than the two tables
+    only agreeing by convention/duck-typing."""
 
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(16))
@@ -30,14 +32,9 @@ class CandleORM(Base):
     volume: Mapped[float] = mapped_column(Float, default=0.0)
 
 
-class PredictionORM(Base):
-    """Append-only prediction log — rows are never updated, only inserted,
-    so history and future backtesting have a complete record."""
-
-    __tablename__ = "predictions"
-    __table_args__ = (
-        Index("ix_predictions_symbol_timeframe_timestamp", "symbol", "timeframe", "timestamp"),
-    )
+class PredictionColumns:
+    """Shared column set for PredictionORM and TradingViewPredictionORM —
+    see CandleColumns."""
 
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(16))
@@ -49,15 +46,9 @@ class PredictionORM(Base):
     timestamp: Mapped[datetime] = mapped_column(UTCDateTime)
 
 
-class SignalORM(Base):
-    """Every generated ICT signal. Unlike CandleORM/PredictionORM (pure
-    append-only logs), a signal row is updated once when it resolves
-    (status/closed_at/realized_rr) — the one place this codebase mutates
-    an existing row, because a signal genuinely has a lifecycle
-    (open -> win/loss/expired), not a point-in-time fact."""
-
-    __tablename__ = "signals"
-    __table_args__ = (Index("ix_signals_symbol_status", "symbol", "status"),)
+class SignalColumns:
+    """Shared column set for SignalORM and TradingViewSignalORM — see
+    CandleColumns."""
 
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(16))
@@ -77,6 +68,67 @@ class SignalORM(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     realized_rr: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class CandleORM(CandleColumns, Base):
+    __tablename__ = "candles"
+    __table_args__ = (
+        Index("ix_candles_symbol_timeframe_open_time", "symbol", "timeframe", "open_time", unique=True),
+    )
+
+
+class PredictionORM(PredictionColumns, Base):
+    """Append-only prediction log — rows are never updated, only inserted,
+    so history and future backtesting have a complete record."""
+
+    __tablename__ = "predictions"
+    __table_args__ = (
+        Index("ix_predictions_symbol_timeframe_timestamp", "symbol", "timeframe", "timestamp"),
+    )
+
+
+class SignalORM(SignalColumns, Base):
+    """Every generated ICT signal. Unlike CandleORM/PredictionORM (pure
+    append-only logs), a signal row is updated once when it resolves
+    (status/closed_at/realized_rr) — the one place this codebase mutates
+    an existing row, because a signal genuinely has a lifecycle
+    (open -> win/loss/expired), not a point-in-time fact."""
+
+    __tablename__ = "signals"
+    __table_args__ = (Index("ix_signals_symbol_status", "symbol", "status"),)
+
+
+class TradingViewCandleORM(CandleColumns, Base):
+    """Schema-identical to CandleORM (shares CandleColumns), in its own
+    table — see DataSource in constants.py. Kept as a fully separate table
+    (not a `source` column on CandleORM) so the two pipelines' data can
+    never mix at the storage layer, the same lesson learned from
+    [[remove-mock-auto-fallback]]."""
+
+    __tablename__ = "tradingview_candles"
+    __table_args__ = (
+        Index(
+            "ix_tradingview_candles_symbol_timeframe_open_time", "symbol", "timeframe", "open_time", unique=True
+        ),
+    )
+
+
+class TradingViewPredictionORM(PredictionColumns, Base):
+    """Schema-identical to PredictionORM (shares PredictionColumns), in
+    its own table — see TradingViewCandleORM."""
+
+    __tablename__ = "tradingview_predictions"
+    __table_args__ = (
+        Index("ix_tradingview_predictions_symbol_timeframe_timestamp", "symbol", "timeframe", "timestamp"),
+    )
+
+
+class TradingViewSignalORM(SignalColumns, Base):
+    """Schema-identical to SignalORM (shares SignalColumns), in its own
+    table — see TradingViewCandleORM."""
+
+    __tablename__ = "tradingview_signals"
+    __table_args__ = (Index("ix_tradingview_signals_symbol_status", "symbol", "status"),)
 
 
 class BacktestRunORM(Base):

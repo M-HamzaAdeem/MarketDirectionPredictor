@@ -18,6 +18,7 @@ from app.feeds.base import Candle
 from app.prediction.signal import Signal
 from app.prediction.signal_resolution import resolve_signal
 from app.services.broadcast_service import BroadcastService
+from app.storage.models import SignalColumns, SignalORM
 from app.storage.repositories.signal_repository import SignalRepository
 
 logger = logging.getLogger(__name__)
@@ -26,21 +27,27 @@ DEFAULT_EXPIRY = timedelta(days=5)
 
 
 class SignalTracker:
+    """`signal_model` defaults to the Twelve Data pipeline's table; pass
+    `signal_model=TradingViewSignalORM` to run this same logic against
+    that fully separate pipeline instead."""
+
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         broadcaster: BroadcastService,
         expiry: timedelta = DEFAULT_EXPIRY,
+        signal_model: type[SignalColumns] = SignalORM,
     ) -> None:
         self._session_factory = session_factory
         self._broadcaster = broadcaster
         self._expiry = expiry
+        self._signal_model = signal_model
 
     async def on_candle_closed(self, candle: Candle) -> None:
         resolved: list[Signal] = []
 
         async with self._session_factory() as session:
-            repository = SignalRepository(session)
+            repository = SignalRepository(session, model=self._signal_model)
             open_signals = await repository.get_open(candle.symbol)
             for signal in open_signals:
                 if signal.entry_timeframe != candle.timeframe:

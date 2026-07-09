@@ -8,10 +8,17 @@ from app.core.config import get_settings
 from app.prediction.engine import PredictionEngine
 from app.prediction.factory import create_strategy
 from app.services.feed_service import FeedService
+from app.services.tradingview_feed_service import TradingViewFeedService
 
 
 def get_feed_service(request: Request) -> FeedService:
     return request.app.state.feed_service
+
+
+def get_tradingview_feed_service(request: Request) -> TradingViewFeedService | None:
+    """None when Settings.tradingview_enabled is False — the app never
+    constructs this pipeline in that case (see main.py's _lifespan)."""
+    return getattr(request.app.state, "tradingview_feed_service", None)
 
 
 @lru_cache

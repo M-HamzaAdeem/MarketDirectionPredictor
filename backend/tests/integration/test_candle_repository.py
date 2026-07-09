@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core.constants import Symbol, Timeframe
 from app.feeds.base import Candle
 from app.storage.database import Base
+from app.storage.models import TradingViewCandleORM
 from app.storage.repositories.candle_repository import CandleRepository
 
 
@@ -150,3 +151,24 @@ async def test_save_many_if_missing_inserts_new_and_skips_duplicate_rows(session
     async with session_factory() as session:
         candles = await CandleRepository(session).get_recent(Symbol.XAUUSD, Timeframe.M1, limit=10)
     assert [c.close for c in candles] == [100.0, 101.0]
+
+
+async def test_model_param_isolates_writes_and_reads_to_the_alternate_table(session_factory) -> None:
+    # The whole TradingView dual-source feature depends on this: a save()
+    # against model=TradingViewCandleORM must be invisible to the default
+    # (Twelve Data) CandleORM table, and vice versa -- never a shared table
+    # filtered by a column, an actually separate table.
+    candle = _candle(datetime(2026, 1, 1, tzinfo=UTC), close=100.0)
+
+    async with session_factory() as session:
+        await CandleRepository(session, model=TradingViewCandleORM).save(candle)
+
+    async with session_factory() as session:
+        default_table_candles = await CandleRepository(session).get_recent(Symbol.XAUUSD, Timeframe.M1)
+        tradingview_table_candles = await CandleRepository(session, model=TradingViewCandleORM).get_recent(
+            Symbol.XAUUSD, Timeframe.M1
+        )
+
+    assert default_table_candles == []
+    assert len(tradingview_table_candles) == 1
+    assert tradingview_table_candles[0].close == 100.0

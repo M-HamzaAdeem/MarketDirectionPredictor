@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import type { FeedStatus, MarketSymbol, Price } from '../types/market'
+import { useShallow } from 'zustand/react/shallow'
+import type { DataSource, FeedStatus, MarketSymbol, Price } from '../types/market'
 import type { Prediction } from '../types/prediction'
 import type { Signal } from '../types/signal'
 
@@ -8,44 +9,75 @@ interface FeedStatusState {
   timestamp: string
 }
 
-interface MarketState {
-  feedStatus: FeedStatusState | null
-  prices: Partial<Record<MarketSymbol, Price>>
-  /** keyed by `${symbol}:${timeframe}` */
-  predictions: Record<string, Prediction>
-  /** keyed by signal id — both new-open and later resolution updates land here */
-  signals: Record<number, Signal>
+type BySource<T> = Record<DataSource, T>
 
-  setFeedStatus: (status: FeedStatus, timestamp: string) => void
-  setPrice: (price: Price) => void
-  setPrediction: (prediction: Prediction) => void
-  upsertSignal: (signal: Signal) => void
-  hydrateSignals: (signals: Signal[]) => void
+function emptyBySource<T>(makeEmpty: () => T): BySource<T> {
+  return { twelve_data: makeEmpty(), tradingview: makeEmpty() }
+}
+
+interface MarketState {
+  /** Which source's data the dashboard currently displays — both
+   * pipelines run continuously in the backend regardless of this. */
+  activeSource: DataSource
+  feedStatus: BySource<FeedStatusState | null>
+  prices: BySource<Partial<Record<MarketSymbol, Price>>>
+  /** keyed by `${symbol}:${timeframe}` */
+  predictions: BySource<Record<string, Prediction>>
+  /** keyed by signal id — both new-open and later resolution updates land here */
+  signals: BySource<Record<number, Signal>>
+
+  setActiveSource: (source: DataSource) => void
+  setFeedStatus: (source: DataSource, status: FeedStatus, timestamp: string) => void
+  setPrice: (source: DataSource, price: Price) => void
+  setPrediction: (source: DataSource, prediction: Prediction) => void
+  upsertSignal: (source: DataSource, signal: Signal) => void
+  hydrateSignals: (source: DataSource, signals: Signal[]) => void
 }
 
 export const useMarketStore = create<MarketState>((set) => ({
-  feedStatus: null,
-  prices: {},
-  predictions: {},
-  signals: {},
+  activeSource: 'twelve_data',
+  feedStatus: emptyBySource(() => null),
+  prices: emptyBySource(() => ({})),
+  predictions: emptyBySource(() => ({})),
+  signals: emptyBySource(() => ({})),
 
-  setFeedStatus: (status, timestamp) => set({ feedStatus: { status, timestamp } }),
+  setActiveSource: (source) => set({ activeSource: source }),
 
-  setPrice: (price) => set((state) => ({ prices: { ...state.prices, [price.symbol]: price } })),
+  setFeedStatus: (source, status, timestamp) =>
+    set((state) => ({ feedStatus: { ...state.feedStatus, [source]: { status, timestamp } } })),
 
-  setPrediction: (prediction) =>
+  setPrice: (source, price) =>
     set((state) => ({
-      predictions: { ...state.predictions, [`${prediction.symbol}:${prediction.timeframe}`]: prediction },
+      prices: { ...state.prices, [source]: { ...state.prices[source], [price.symbol]: price } },
     })),
 
-  upsertSignal: (signal) => set((state) => ({ signals: { ...state.signals, [signal.id]: signal } })),
+  setPrediction: (source, prediction) =>
+    set((state) => ({
+      predictions: {
+        ...state.predictions,
+        [source]: {
+          ...state.predictions[source],
+          [`${prediction.symbol}:${prediction.timeframe}`]: prediction,
+        },
+      },
+    })),
 
-  hydrateSignals: (signals) =>
-    set((state) => ({ signals: { ...Object.fromEntries(signals.map((s) => [s.id, s])), ...state.signals } })),
+  upsertSignal: (source, signal) =>
+    set((state) => ({
+      signals: { ...state.signals, [source]: { ...state.signals[source], [signal.id]: signal } },
+    })),
+
+  hydrateSignals: (source, signals) =>
+    set((state) => ({
+      signals: {
+        ...state.signals,
+        [source]: { ...Object.fromEntries(signals.map((s) => [s.id, s])), ...state.signals[source] },
+      },
+    })),
 }))
 
 /**
- * Open signals, most-recently-opened first.
+ * Open signals for `source`, most-recently-opened first.
  *
  * @remarks Returns a new array on every call (filter + sort). Every call
  * site MUST wrap this in `useShallow` from `zustand/react/shallow`, or
@@ -56,8 +88,35 @@ export const useMarketStore = create<MarketState>((set) => ({
  * the backend always emits) — `localeCompare` would silently misorder a
  * timestamp with a non-UTC offset or non-padded fields.
  */
-export function selectOpenSignals(state: MarketState): Signal[] {
-  return Object.values(state.signals)
+export function selectOpenSignals(state: MarketState, source: DataSource): Signal[] {
+  return Object.values(state.signals[source])
     .filter((signal) => signal.status === 'open')
     .sort((a, b) => b.opened_at.localeCompare(a.opened_at))
+}
+
+// Derived selector hooks reading whichever source is currently active, so
+// most components change one import line instead of threading a `source`
+// prop through themselves and remembering to index by `activeSource`.
+// Only `useActiveOpenSignals` needs `useShallow` — the others are plain
+// property lookups into an already-stored object, not a per-call
+// filter/map/sort derivation, so they're referentially stable as-is.
+
+export function useActiveFeedStatus(): FeedStatusState | null {
+  return useMarketStore((state) => state.feedStatus[state.activeSource])
+}
+
+export function useActivePrices(): Partial<Record<MarketSymbol, Price>> {
+  return useMarketStore((state) => state.prices[state.activeSource])
+}
+
+export function useActivePredictions(): Record<string, Prediction> {
+  return useMarketStore((state) => state.predictions[state.activeSource])
+}
+
+export function useActiveSignals(): Record<number, Signal> {
+  return useMarketStore((state) => state.signals[state.activeSource])
+}
+
+export function useActiveOpenSignals(): Signal[] {
+  return useMarketStore(useShallow((state) => selectOpenSignals(state, state.activeSource)))
 }

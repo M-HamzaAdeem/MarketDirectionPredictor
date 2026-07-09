@@ -2,12 +2,17 @@
 
 Symbol and timeframe are typed path parameters (enums), not free text —
 an invalid value is rejected by FastAPI with a 422 before this code runs.
+`source` is a query param, not a path segment: it's a view/filter
+modifier on an already-fully-identified resource (symbol+timeframe already
+determine "which candles"), the same role `limit` already plays — not
+part of identifying the resource itself, unlike Symbol/Timeframe.
 """
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.constants import Symbol, Timeframe
+from app.api.source_models import candle_model_for
+from app.core.constants import DataSource, Symbol, Timeframe
 from app.schemas.candle import CandleOut
 from app.storage.database import get_session
 from app.storage.repositories.candle_repository import CandleRepository
@@ -22,9 +27,12 @@ async def get_candles(
     symbol: Symbol,
     timeframe: Timeframe,
     limit: int = Query(default=100, ge=1, le=_MAX_LIMIT),
+    source: DataSource = Query(default=DataSource.TWELVE_DATA),
     session: AsyncSession = Depends(get_session),
 ) -> list[CandleOut]:
-    candles = await CandleRepository(session).get_recent(symbol, timeframe, limit=limit)
+    candles = await CandleRepository(session, model=candle_model_for(source)).get_recent(
+        symbol, timeframe, limit=limit
+    )
     return [
         CandleOut(
             open_time=candle.open_time,
