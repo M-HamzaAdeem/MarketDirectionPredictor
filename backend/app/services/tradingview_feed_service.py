@@ -26,10 +26,25 @@ Two gotchas specific to polling (absent from the tick-driven path):
    against stale data — a hazard the tick-driven path never has, since
    CandleAggregator only ever emits one tick's worth of closes at a time.
    Fixed by always polling coarsest-to-finest per symbol (_ordered_timeframes).
+
+Symbols are polled *concurrently* (asyncio.gather over _poll_symbol),
+timeframes *sequentially* within each symbol (to preserve gotcha #2's
+ordering, which only matters within one symbol — a 4H close on XAUUSD has
+no bearing on EURUSD's M15 read). Each fetch is a full TradingView
+connect/handshake/receive/disconnect round trip (see tradingview_client.py),
+so polling N symbols sequentially made every single symbol's live price
+lag by roughly N times one round trip's latency, not the configured
+poll_interval_seconds — confirmed by live usage looking visibly "stale"
+against TradingView's own chart. Concurrency here is safe: each symbol's
+_poll_symbol is fully independent (own DB rows, own handler calls), and a
+failure in one still fails the whole cycle into backoff via gather's
+collected-then-reraised exception, matching the existing "any failure
+means the pipeline isn't healthy" philosophy from before this change.
 """
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -153,9 +168,20 @@ class TradingViewFeedService:
 
         while True:
             try:
-                for symbol in self._settings.symbols:
-                    for timeframe in _ordered_timeframes(self._settings.timeframes):
-                        await self._poll_one(symbol, timeframe)
+                # return_exceptions=True + manual re-raise below, rather
+                # than letting gather() propagate the first failure
+                # directly: that would leave the *other* still-running
+                # symbols' polls as orphaned background tasks racing the
+                # next retry cycle. Waiting for every symbol to finish
+                # first (success or failure) keeps one poll cycle's work
+                # fully done before backoff/the next cycle begins.
+                results = await asyncio.gather(
+                    *(self._poll_symbol(symbol) for symbol in self._settings.symbols),
+                    return_exceptions=True,
+                )
+                for result in results:
+                    if isinstance(result, BaseException):
+                        raise result
 
                 if backing_off:
                     backing_off = False
@@ -172,6 +198,13 @@ class TradingViewFeedService:
                 await asyncio.sleep(delay)
                 delay = min(delay * _BACKOFF_MULTIPLIER, _MAX_BACKOFF_DELAY_SECONDS)
 
+    async def _poll_symbol(self, symbol: Symbol) -> None:
+        # Sequential within a symbol (coarsest-to-finest) — see gotcha #2
+        # in the module docstring; independent across symbols, which is
+        # what makes running one _poll_symbol per symbol concurrently safe.
+        for timeframe in _ordered_timeframes(self._settings.timeframes):
+            await self._poll_one(symbol, timeframe)
+
     async def _set_status(self, status: FeedStatus) -> None:
         if status == self.status:
             return
@@ -186,27 +219,49 @@ class TradingViewFeedService:
         closed, forming = _split_forming(fetched)
 
         if forming is not None:
-            tick = Tick(symbol=symbol, price=forming.close, timestamp=forming.close_time, volume=0.0)
+            # NOT forming.close_time: for a still-forming bar that's the
+            # bucket's *future*, not-yet-real end boundary
+            # (open_time + timeframe duration, computed in
+            # tradingview_client.py). Stamping the tick with it would push
+            # the frontend's bucketStart() one bucket ahead of the real
+            # currently-forming candle, silently breaking
+            # useFormingCandle's live chart overlay. now() is both an
+            # honest "when did we observe this price" and guaranteed to
+            # still fall inside the real current bucket.
+            tick = Tick(symbol=symbol, price=forming.close, timestamp=datetime.now(UTC), volume=0.0)
             self._latest_prices[symbol] = tick
             await self._broadcaster.broadcast_price(tick)
 
         if not closed:
             return
 
-        async with self._session_factory() as session:
-            repository = CandleRepository(session, model=self._candle_model)
-            existing = await repository.get_recent(symbol, timeframe, limit=_POLL_FETCH_COUNT)
-            known_open_times = {candle.open_time for candle in existing}
-            newly_closed = sorted(
-                (candle for candle in closed if candle.open_time not in known_open_times),
-                key=lambda candle: candle.open_time,
-            )
-            # Persists the whole fetched window (closed), not just
-            # newly_closed -- save_many_if_missing's ON CONFLICT DO NOTHING
-            # makes re-inserting already-known rows a harmless no-op, so
-            # this also self-heals any row that (for whatever reason)
-            # exists in `closed` but wasn't caught by known_open_times.
-            await repository.save_many_if_missing(closed)
+        try:
+            async with self._session_factory() as session:
+                repository = CandleRepository(session, model=self._candle_model)
+                existing = await repository.get_recent(symbol, timeframe, limit=_POLL_FETCH_COUNT)
+                known_open_times = {candle.open_time for candle in existing}
+                newly_closed = sorted(
+                    (candle for candle in closed if candle.open_time not in known_open_times),
+                    key=lambda candle: candle.open_time,
+                )
+                # Persists the whole fetched window (closed), not just
+                # newly_closed -- save_many_if_missing's ON CONFLICT DO
+                # NOTHING makes re-inserting already-known rows a harmless
+                # no-op, so this also self-heals any row that (for
+                # whatever reason) exists in `closed` but wasn't caught by
+                # known_open_times.
+                await repository.save_many_if_missing(closed)
+        except SQLAlchemyError:
+            # Symbols now poll concurrently (see module docstring), so a
+            # transient SQLite write-lock contention between two symbols'
+            # sessions is a real, expected possibility that didn't exist
+            # when everything ran strictly sequentially. One symbol/
+            # timeframe pair missing a cycle is self-healing (the next
+            # poll re-diffs from scratch) — it must not escalate into
+            # backing off the whole pipeline the way a genuine TradingView
+            # connectivity failure should.
+            logger.exception("TradingView candle persistence failed for %s/%s", symbol.value, timeframe.value)
+            return
 
         for candle in newly_closed:
             await self._handle_closed_candle(candle)

@@ -3,6 +3,7 @@ import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
@@ -135,6 +136,121 @@ async def test_poll_one_ignores_a_still_forming_only_response(session_factory) -
 
     assert handler.candles == []  # the only bar returned is the forming one -- no closed candle yet
     assert service.latest_price(Symbol.XAUUSD) is not None  # but the forming bar still updates the live price
+
+
+class _SlowTradingViewClient:
+    """Every fetch_candles call takes `delay_seconds` -- lets a test prove
+    multiple symbols are polled concurrently (elapsed time close to one
+    delay) rather than sequentially (elapsed time close to N delays)."""
+
+    def __init__(self, delay_seconds: float, forming_only: Candle) -> None:
+        self._delay_seconds = delay_seconds
+        self._forming_only = forming_only
+
+    async def fetch_candles(self, symbol: Symbol, timeframe: Timeframe, count: int) -> list[Candle]:
+        await _real_sleep(self._delay_seconds)
+        return [self._forming_only]
+
+
+async def test_symbols_are_polled_concurrently_not_sequentially(session_factory) -> None:
+    delay_seconds = 0.1
+    symbols = [Symbol.XAUUSD, Symbol.EURUSD, Symbol.AUDUSD]
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    client = _SlowTradingViewClient(delay_seconds, forming_only=_candle(base, close=100.0))
+    service = TradingViewFeedService(
+        client, _settings(symbols=symbols), _broadcaster(), session_factory, [], poll_interval_seconds=0.01
+    )
+
+    start = time.monotonic()
+    await service.start()
+    await _wait_until(lambda: all(service.latest_price(symbol) is not None for symbol in symbols))
+    elapsed = time.monotonic() - start
+    await service.stop()
+
+    # Sequential would take >= 3 * delay_seconds (0.3s); concurrent should
+    # land close to one delay_seconds. A generous cutoff well below the
+    # sequential figure keeps this robust against normal test-machine jitter.
+    assert elapsed < delay_seconds * 2
+
+
+class _RaisingSessionContext:
+    async def __aenter__(self):
+        raise SQLAlchemyError("simulated write-lock contention")
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+
+async def test_a_db_error_for_one_symbol_does_not_block_or_fail_the_others(session_factory) -> None:
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+
+    def _bars(symbol: Symbol) -> list[Candle]:
+        return [_candle(base, close=100.0, symbol=symbol), _candle(base + timedelta(minutes=15), close=101.0, symbol=symbol)]
+
+    client = _FakeTradingViewClient(
+        {
+            (Symbol.XAUUSD, Timeframe.M15): _bars(Symbol.XAUUSD),
+            (Symbol.EURUSD, Timeframe.M15): _bars(Symbol.EURUSD),
+        }
+    )
+    handler = _RecordingHandler()
+    service = TradingViewFeedService(
+        client,
+        _settings(symbols=[Symbol.XAUUSD, Symbol.EURUSD]),
+        _broadcaster(),
+        session_factory,
+        [handler],
+        poll_interval_seconds=999,
+    )
+
+    # Fail only the first session opened (XAUUSD's, since _poll_symbol
+    # runs coarsest-to-finest and this test has one timeframe), then let
+    # every subsequent one (EURUSD's) through to the real factory --
+    # simulating a transient write-lock hiccup for exactly one symbol.
+    real_session_factory = session_factory
+    call_count = 0
+
+    def _factory_that_fails_only_the_first_call():
+        nonlocal call_count
+        call_count += 1
+        return _RaisingSessionContext() if call_count == 1 else real_session_factory()
+
+    service._session_factory = _factory_that_fails_only_the_first_call  # noqa: SLF001
+
+    await service._poll_symbol(Symbol.XAUUSD)  # its DB write fails -- must not raise
+    await service._poll_symbol(Symbol.EURUSD)  # a separate, later call -- must still succeed
+
+    assert len(handler.candles) == 1  # only EURUSD's candle made it through
+    assert handler.candles[0].symbol == Symbol.EURUSD
+    assert service.status == FeedStatus.LIVE  # a per-symbol DB hiccup must not trigger a pipeline-wide backoff
+
+
+async def test_poll_one_stamps_the_live_tick_with_now_not_the_forming_bars_future_close_time(session_factory) -> None:
+    # Regression: forming.close_time is open_time + timeframe duration --
+    # the bucket's future, not-yet-real end boundary, not "now". Stamping
+    # the broadcast tick with it pushes the frontend's client-side
+    # bucketing (useFormingCandle's bucketStart()) one bucket ahead of the
+    # real currently-forming candle, silently breaking the live chart
+    # overlay (it looked permanently one candle behind a live TradingView
+    # chart until this was caught and fixed).
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    forming = _candle(base, close=100.0)  # open_time=base, close_time=base+15m (still forming, not persisted)
+    client = _FakeTradingViewClient({(Symbol.XAUUSD, Timeframe.M15): [forming]})
+    service = TradingViewFeedService(
+        client, _settings(), _broadcaster(), session_factory, [], poll_interval_seconds=999
+    )
+
+    await service._poll_one(Symbol.XAUUSD, Timeframe.M15)
+
+    tick = service.latest_price(Symbol.XAUUSD)
+    assert tick is not None
+    assert tick.timestamp != forming.close_time
+    # Genuinely "now" (real wall-clock time this test runs), not derived
+    # from the fixture's fixed historical `base` -- a wide-but-real
+    # tolerance rather than freezing time, since the point is to catch a
+    # regression to forming.close_time (2026-01-01T00:15), not to pin an
+    # exact instant.
+    assert abs((tick.timestamp - datetime.now(UTC)).total_seconds()) < 5
 
 
 async def test_poll_one_triggers_handlers_only_for_genuinely_new_closed_candles(session_factory) -> None:
