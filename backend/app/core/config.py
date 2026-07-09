@@ -6,9 +6,10 @@ these values, so swapping providers or adding a symbol is a config change.
 """
 
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.core.constants import FeedProvider, PredictionStrategyKind, Symbol, Timeframe
 
@@ -33,9 +34,14 @@ class Settings(BaseSettings):
     # clone, and silently falls back to NEUTRAL per pair if they're missing.
     prediction_strategy: PredictionStrategyKind = PredictionStrategyKind.RULE_BASED
     ml_model_dir: str = "data/models"
-    cors_origins: list[str] = ["http://localhost:5173"]
-    symbols: list[Symbol] = [Symbol.XAUUSD, Symbol.EURUSD, Symbol.AUDUSD]
-    timeframes: list[Timeframe] = [
+    # NoDecode: without it, pydantic-settings tries to JSON-parse any list-
+    # typed env var before _split_csv below ever runs, so a plain CSV value
+    # in .env (e.g. CORS_ORIGINS=http://a,http://b) raises a SettingsError
+    # instead of being split -- see [[csv-env-list-nodecode-fix]] in
+    # decisions.md.
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
+    symbols: Annotated[list[Symbol], NoDecode] = [Symbol.XAUUSD, Symbol.EURUSD, Symbol.AUDUSD]
+    timeframes: Annotated[list[Timeframe], NoDecode] = [
         Timeframe.M1,
         Timeframe.M5,
         Timeframe.M15,
