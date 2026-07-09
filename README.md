@@ -63,6 +63,25 @@ npm run dev
 
 The dashboard serves at `http://localhost:5173`.
 
+## Running as Windows Services (no PowerShell window needed)
+
+`scripts/windows-service/install-services.ps1` wraps both dev servers
+(`uvicorn --reload`, `npm run dev`) as Windows Services via [NSSM](https://nssm.cc)
+— they survive reboot, auto-restart on crash, and run headless. From an
+**elevated** PowerShell:
+
+```powershell
+cd D:\path\to\MarketDirectionPredictor
+.\scripts\windows-service\install-services.ps1
+```
+
+Stops any manually-started dev servers first (they'd otherwise fight the
+services for ports 8000/5173), installs NSSM via Chocolatey if it isn't
+already present, then creates and starts `MarketPredictorBackend` and
+`MarketPredictorFrontend`. Logs land in `logs/`. Manage with
+`nssm status|restart|stop <name>`; remove both with
+`.\scripts\windows-service\uninstall-services.ps1` (also elevated).
+
 ## Project layout
 
 ```

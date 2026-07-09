@@ -1,0 +1,47 @@
+MARKET DIRECTION PREDICTOR -- SERVICE RUNBOOK
+==============================================
+(All commands below run in an ELEVATED PowerShell -- Run as Administrator)
+
+FIRST-TIME SETUP
+-----------------
+Stop any manually-started `uvicorn`/`npm run dev` first (ports must be free), then:
+cd D:\Hamza_Work_2025\Teading\MarketDirectionPredictor
+.\scripts\windows-service\install-services.ps1
+
+START / STOP / RESTART
+-----------------------
+nssm start   MarketPredictorBackend
+nssm start   MarketPredictorFrontend
+nssm stop    MarketPredictorBackend
+nssm stop    MarketPredictorFrontend
+nssm restart MarketPredictorBackend
+nssm restart MarketPredictorFrontend
+
+Or use Windows' built-in Services app (services.msc) -- search
+"MarketPredictorBackend" / "MarketPredictorFrontend".
+
+CHECK STATUS
+------------
+nssm status MarketPredictorBackend
+nssm status MarketPredictorFrontend
+Get-Service Market*
+
+LOGS
+----
+logs\MarketPredictorBackend.out.log   / .err.log
+logs\MarketPredictorFrontend.out.log  / .err.log
+(auto-rotate at 10MB)
+
+UNINSTALL
+---------
+.\scripts\windows-service\uninstall-services.ps1
+
+PORTS
+-----
+Backend:  127.0.0.1:8000   (http://localhost:8000/health)
+Frontend (service):      127.0.0.1:80   (http://localhost)
+Frontend (manual `npm run dev`, no service): 127.0.0.1:5173 (unchanged)
+
+If the dashboard loads via the service but API calls fail with a CORS
+error in the browser console, check backend\.env's CORS_ORIGINS
+(comma-separated) includes http://localhost, then restart the backend.
