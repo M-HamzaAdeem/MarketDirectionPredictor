@@ -109,6 +109,16 @@ def test_ordered_timeframes_filters_to_only_configured_ones() -> None:
     assert _ordered_timeframes([Timeframe.M15]) == [Timeframe.M15]
 
 
+def test_ordered_timeframes_sorts_daily_and_weekly_ahead_of_the_rest() -> None:
+    assert _ordered_timeframes([Timeframe.M15, Timeframe.D1, Timeframe.W1, Timeframe.H1, Timeframe.M1]) == [
+        Timeframe.W1,
+        Timeframe.D1,
+        Timeframe.H1,
+        Timeframe.M15,
+        Timeframe.M1,
+    ]
+
+
 async def test_backfill_persists_closed_candles_and_excludes_the_forming_bar(session_factory) -> None:
     base = datetime(2026, 1, 1, tzinfo=UTC)
     candles = [_candle(base + timedelta(minutes=15 * i), close=100.0 + i) for i in range(5)]

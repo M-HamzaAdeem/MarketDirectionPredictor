@@ -68,6 +68,10 @@ _TIMEFRAME_TO_INTERVAL: dict[Timeframe, str] = {
     Timeframe.M15: "15min",
     Timeframe.H1: "1h",
     Timeframe.H4: "4h",
+    # Twelve Data's own interval enum spells these out (1min..4h, then
+    # 1day/1week/1month) rather than continuing the abbreviated pattern.
+    Timeframe.D1: "1day",
+    Timeframe.W1: "1week",
 }
 
 

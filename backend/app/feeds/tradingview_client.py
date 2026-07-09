@@ -48,6 +48,10 @@ _TIMEFRAME_TO_INTERVAL: dict[Timeframe, str] = {
     Timeframe.M15: "15",
     Timeframe.H1: "60",
     Timeframe.H4: "240",
+    # Daily/weekly aren't expressed as a minute count in TradingView's
+    # interval scheme -- they're the literal single-letter codes "D"/"W".
+    Timeframe.D1: "D",
+    Timeframe.W1: "W",
 }
 
 # TradingView's replies embed candle rows as e.g. "v":[1735689600,100.1,...]

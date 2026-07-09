@@ -35,7 +35,15 @@ class Settings(BaseSettings):
     ml_model_dir: str = "data/models"
     cors_origins: list[str] = ["http://localhost:5173"]
     symbols: list[Symbol] = [Symbol.XAUUSD, Symbol.EURUSD, Symbol.AUDUSD]
-    timeframes: list[Timeframe] = [Timeframe.M1, Timeframe.M5, Timeframe.M15, Timeframe.H1, Timeframe.H4]
+    timeframes: list[Timeframe] = [
+        Timeframe.M1,
+        Timeframe.M5,
+        Timeframe.M15,
+        Timeframe.H1,
+        Timeframe.H4,
+        Timeframe.D1,
+        Timeframe.W1,
+    ]
     # A second, fully independent market-data pipeline (own tables, own
     # PredictionService/SignalTracker/SignalService instances) running
     # alongside the feed above — see app/services/tradingview_feed_service.py.

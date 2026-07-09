@@ -25,7 +25,7 @@ async def test_get_config_returns_the_effective_settings_and_strategy_parameters
     assert body["mock_time_acceleration"] == 60.0
     assert body["tradingview_enabled"] is True
     assert set(body["symbols"]) == {"XAUUSD", "EURUSD", "AUDUSD"}
-    assert set(body["timeframes"]) == {"1m", "5m", "15m", "1h", "4h"}
+    assert set(body["timeframes"]) == {"1m", "5m", "15m", "1h", "4h", "1d", "1w"}
     assert body["min_risk_reward"] == 1.8
     assert body["ote_shallow_ratio"] == 0.705
     assert body["ote_deep_ratio"] == 0.79

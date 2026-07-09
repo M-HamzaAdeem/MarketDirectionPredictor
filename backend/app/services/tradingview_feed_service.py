@@ -91,7 +91,15 @@ _MAX_BACKOFF_DELAY_SECONDS = 30.0
 _BACKOFF_MULTIPLIER = 2.0
 
 # Coarsest-to-finest: see gotcha #2 in the module docstring.
-_TIMEFRAME_ORDER = [Timeframe.H4, Timeframe.H1, Timeframe.M15, Timeframe.M5, Timeframe.M1]
+_TIMEFRAME_ORDER = [
+    Timeframe.W1,
+    Timeframe.D1,
+    Timeframe.H4,
+    Timeframe.H1,
+    Timeframe.M15,
+    Timeframe.M5,
+    Timeframe.M1,
+]
 
 
 def _ordered_timeframes(configured: list[Timeframe]) -> list[Timeframe]:

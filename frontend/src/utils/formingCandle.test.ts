@@ -12,6 +12,16 @@ describe('bucketStart', () => {
     expect(bucketStart('2026-01-01T10:59:59Z', '1h')).toBe('2026-01-01T10:00:00.000Z')
     expect(bucketStart('2026-01-01T11:00:00Z', '1h')).toBe('2026-01-01T11:00:00.000Z')
   })
+
+  it('floors a 1d timestamp to a UTC midnight boundary', () => {
+    expect(bucketStart('2026-01-01T13:45:00Z', '1d')).toBe('2026-01-01T00:00:00.000Z')
+  })
+
+  it('floors a 1w timestamp to a Thursday boundary, matching the backend epoch-floor convention', () => {
+    // Mirrors backend test_bucket_start_weekly_is_thursday_anchored_not_monday
+    // in tests/unit/test_time.py -- 2026-01-01 is itself a Thursday.
+    expect(bucketStart('2026-01-01T13:45:00Z', '1w')).toBe('2026-01-01T00:00:00.000Z')
+  })
 })
 
 describe('updateFormingCandle', () => {
