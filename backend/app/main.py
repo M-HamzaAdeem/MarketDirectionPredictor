@@ -86,8 +86,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     await feed_service.start()
 
     # A second, fully independent pipeline (own tables, own handler
-    # instances) — off by default since it depends on TradingView's
-    # unofficial WebSocket protocol; see Settings.tradingview_enabled.
+    # instances) — on and the default source by default (see
+    # Settings.tradingview_enabled), since it needs no API key; set to
+    # False to run FEED_PROVIDER's pipeline only.
     app.state.tradingview_feed_service = None
     if settings.tradingview_enabled:
         tradingview_broadcaster = BroadcastService(app.state.connection_manager, source=DataSource.TRADINGVIEW)

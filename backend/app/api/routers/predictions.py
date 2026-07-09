@@ -29,7 +29,7 @@ _MAX_HISTORY_LIMIT = 500
 async def get_latest_prediction(
     symbol: Symbol,
     timeframe: Timeframe,
-    source: DataSource = Query(default=DataSource.TWELVE_DATA),
+    source: DataSource = Query(default=DataSource.TRADINGVIEW),
     engine: PredictionEngine = Depends(get_prediction_engine),
     session: AsyncSession = Depends(get_session),
 ) -> PredictionOut:
@@ -52,7 +52,7 @@ async def get_prediction_history(
     symbol: Symbol,
     timeframe: Timeframe,
     limit: int = Query(default=100, ge=1, le=_MAX_HISTORY_LIMIT),
-    source: DataSource = Query(default=DataSource.TWELVE_DATA),
+    source: DataSource = Query(default=DataSource.TRADINGVIEW),
     session: AsyncSession = Depends(get_session),
 ) -> list[PredictionOut]:
     predictions = await PredictionRepository(session, model=prediction_model_for(source)).get_recent(

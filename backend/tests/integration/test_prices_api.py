@@ -75,7 +75,7 @@ async def test_prefers_the_live_tick_over_the_candle_fallback(session_factory) -
     tick = Tick(symbol=Symbol.XAUUSD, price=2400.0, timestamp=datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
 
     async with _client(session_factory, {Symbol.XAUUSD: tick}) as client:
-        response = await client.get("/prices")
+        response = await client.get("/prices", params={"source": "twelve_data"})
 
     body = response.json()
     assert len(body) == 1
@@ -89,7 +89,7 @@ async def test_falls_back_to_the_latest_1m_candle_when_no_live_tick_yet(session_
     await _seed_1m_candle(session_factory, Symbol.AUDUSD, close=0.69109)
 
     async with _client(session_factory, {}) as client:
-        response = await client.get("/prices")
+        response = await client.get("/prices", params={"source": "twelve_data"})
 
     body = response.json()
     assert len(body) == 1
@@ -99,7 +99,7 @@ async def test_falls_back_to_the_latest_1m_candle_when_no_live_tick_yet(session_
 
 async def test_omits_a_symbol_with_neither_a_live_tick_nor_a_stored_candle(session_factory) -> None:
     async with _client(session_factory, {}) as client:
-        response = await client.get("/prices")
+        response = await client.get("/prices", params={"source": "twelve_data"})
 
     assert response.json() == []
 
@@ -107,6 +107,15 @@ async def test_omits_a_symbol_with_neither_a_live_tick_nor_a_stored_candle(sessi
 async def test_source_tradingview_returns_503_when_the_pipeline_is_not_enabled(session_factory) -> None:
     async with _client(session_factory, {}, tradingview_feed_service=None) as client:
         response = await client.get("/prices", params={"source": "tradingview"})
+
+    assert response.status_code == 503
+
+
+async def test_source_defaults_to_tradingview_when_not_specified(session_factory) -> None:
+    # No ?source= at all -- must behave identically to an explicit
+    # source=tradingview, confirming that's genuinely the default.
+    async with _client(session_factory, {}, tradingview_feed_service=None) as client:
+        response = await client.get("/prices")
 
     assert response.status_code == 503
 

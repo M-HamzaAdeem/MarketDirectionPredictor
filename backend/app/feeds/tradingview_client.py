@@ -2,7 +2,8 @@
 public market-data API for fetching chart candles from TradingView; this
 implements the internal/raw protocol a browser tab uses, which can break
 if TradingView changes it. R&D-grade, not a production data guarantee —
-see Settings.tradingview_enabled (defaults off) in core/config.py.
+this is nonetheless the default pipeline (see Settings.tradingview_enabled
+in core/config.py) since, unlike Twelve Data, it needs no API key.
 
 Not a MarketDataProvider: TradingView's protocol is poll-based (connect,
 request, receive, disconnect per fetch), not a persistent tick stream, and

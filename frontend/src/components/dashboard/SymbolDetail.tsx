@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useCandles } from '../../hooks/useCandles'
+import { useFormingCandle } from '../../hooks/useFormingCandle'
 import { useSignalHistory } from '../../hooks/useSignalHistory'
 import { useActiveSignals, useMarketStore } from '../../store/marketStore'
 import type { MarketSymbol, Timeframe } from '../../types/market'
@@ -15,6 +16,7 @@ export function SymbolDetail() {
 
   const { data: candles = [] } = useCandles(symbol, timeframe, activeSource)
   const { data: signalHistory = [] } = useSignalHistory(symbol, activeSource)
+  const formingCandle = useFormingCandle(symbol, timeframe)
 
   // .find() returns whatever object is currently in the map (or undefined)
   // — never a per-call-allocated container like selectOpenSignals' derived
@@ -35,7 +37,13 @@ export function SymbolDetail() {
         onTimeframeChange={setTimeframe}
       />
 
-      <PriceChart symbol={symbol} timeframe={timeframe} candles={candles} signal={openSignal} />
+      <PriceChart
+        symbol={symbol}
+        timeframe={timeframe}
+        candles={candles}
+        formingCandle={formingCandle}
+        signal={openSignal}
+      />
 
       <div>
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Performance</h3>

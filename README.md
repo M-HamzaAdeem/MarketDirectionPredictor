@@ -25,14 +25,15 @@ WebSocket. The mock feed runs on an accelerated virtual clock by default
 (`MOCK_TIME_ACCELERATION=60` in `backend/.env`), so a 4-hour candle closes
 in about 4 real minutes instead of 4 real hours.
 
-An optional second, fully independent market-data pipeline (own DB
-tables, own prediction/signal instances) can run alongside the primary
-feed, sourced from TradingView's unofficial WebSocket protocol
-(`TRADINGVIEW_ENABLED=true` in `backend/.env` — off by default, since it's
-an unofficial protocol that can break if TradingView changes it). When
-enabled, a source toggle appears on the dashboard to switch which
-pipeline's data is displayed; both keep running regardless of which is
-selected. See `app/services/tradingview_feed_service.py`.
+A second, fully independent market-data pipeline (own DB tables, own
+prediction/signal instances) runs alongside the `FEED_PROVIDER` feed
+above, sourced from TradingView's unofficial WebSocket protocol — this is
+the dashboard's **default** data source out of the box (`TRADINGVIEW_ENABLED=true`
+in `backend/.env`; set to `false` to run `FEED_PROVIDER` only, since it's
+an unofficial protocol that can break if TradingView changes it). A
+source toggle on the dashboard switches which pipeline's data is
+displayed; both keep running regardless of which is selected. See
+`app/services/tradingview_feed_service.py`.
 
 ## Stack
 

@@ -62,7 +62,7 @@ async def _seed_candle(session_factory: async_sessionmaker[AsyncSession]) -> Non
 async def test_get_candles_returns_persisted_candles(api: _ApiFixture) -> None:
     await _seed_candle(api.session_factory)
 
-    response = await api.client.get("/candles/XAUUSD/1m")
+    response = await api.client.get("/candles/XAUUSD/1m", params={"source": "twelve_data"})
 
     assert response.status_code == 200
     body = response.json()
@@ -72,7 +72,7 @@ async def test_get_candles_returns_persisted_candles(api: _ApiFixture) -> None:
 
 
 async def test_get_candles_returns_empty_list_when_none_stored(api: _ApiFixture) -> None:
-    response = await api.client.get("/candles/EURUSD/5m")
+    response = await api.client.get("/candles/EURUSD/5m", params={"source": "twelve_data"})
 
     assert response.status_code == 200
     assert response.json() == []
@@ -84,8 +84,8 @@ async def test_get_candles_rejects_unknown_timeframe(api: _ApiFixture) -> None:
     assert response.status_code == 422
 
 
-async def test_get_candles_source_param_reads_the_tradingview_table_not_the_default(api: _ApiFixture) -> None:
-    await _seed_candle(api.session_factory)  # only in the default (Twelve Data) table
+async def test_get_candles_defaults_to_the_tradingview_source_when_none_is_specified(api: _ApiFixture) -> None:
+    await _seed_candle(api.session_factory)  # only in the Twelve Data table
 
     async with api.session_factory() as session:
         await CandleRepository(session, model=TradingViewCandleORM).save(
@@ -102,8 +102,10 @@ async def test_get_candles_source_param_reads_the_tradingview_table_not_the_defa
             )
         )
 
-    default_response = await api.client.get("/candles/XAUUSD/1m")
-    tradingview_response = await api.client.get("/candles/XAUUSD/1m", params={"source": "tradingview"})
+    no_source_param = await api.client.get("/candles/XAUUSD/1m")  # no ?source= at all
+    explicit_default = await api.client.get("/candles/XAUUSD/1m", params={"source": "tradingview"})
+    twelve_data_response = await api.client.get("/candles/XAUUSD/1m", params={"source": "twelve_data"})
 
-    assert [c["close"] for c in default_response.json()] == [2352.0]
-    assert [c["close"] for c in tradingview_response.json()] == [1.2]
+    assert [c["close"] for c in no_source_param.json()] == [1.2]
+    assert [c["close"] for c in explicit_default.json()] == [1.2]
+    assert [c["close"] for c in twelve_data_response.json()] == [2352.0]

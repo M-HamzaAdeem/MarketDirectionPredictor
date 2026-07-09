@@ -11,6 +11,7 @@ import { useEffect, useRef } from 'react'
 import type { Candle, MarketSymbol, Timeframe } from '../../types/market'
 import type { Signal } from '../../types/signal'
 import { describeChart } from '../../utils/describeChart'
+import { formingCandleIsStale } from '../../utils/formingCandle'
 import { pricePrecision } from '../../utils/priceFormat'
 
 const CHART_HEIGHT_PX = 480
@@ -51,11 +52,17 @@ interface PriceChartProps {
   symbol: MarketSymbol
   timeframe: Timeframe
   candles: Candle[]
+  /** The live, still-forming bar tracked client-side from price ticks —
+   * neither pipeline ever persists this one (see useFormingCandle), so
+   * without it the chart's rightmost bar is always the last *closed*
+   * candle, one bar behind a live chart. `null` until the first tick
+   * arrives for this symbol/timeframe. */
+  formingCandle?: Candle | null
   /** The open signal for this symbol/timeframe, if any — drawn as entry/stop/target lines. */
   signal?: Signal | null
 }
 
-export function PriceChart({ symbol, timeframe, candles, signal }: PriceChartProps) {
+export function PriceChart({ symbol, timeframe, candles, formingCandle, signal }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -138,6 +145,34 @@ export function PriceChart({ symbol, timeframe, candles, signal }: PriceChartPro
     // (e.g. XAUUSD's ~4000s vs EURUSD's ~1.1s) look like it never rescaled.
     chart.timeScale().fitContent()
   }, [candles])
+
+  useEffect(() => {
+    const series = seriesRef.current
+    if (!series || !formingCandle) return
+
+    // Guard against a stale forming candle briefly outliving the real
+    // close: right as a bucket rolls over, the backend's confirmed close
+    // (via `candles`, refetched on the next `prediction` WS message) can
+    // arrive either before or after this hook's own tick-driven rollover.
+    // series.update() requires a time >= the series' last bar, so once the
+    // backend has confirmed a bucket closed, defer to that and stop
+    // re-drawing this hook's now-stale approximation of it. See
+    // formingCandleIsStale for why this compares epoch instants rather
+    // than the raw ISO strings.
+    const lastClosedOpenTime = candles.length > 0 ? candles[candles.length - 1].open_time : null
+    if (formingCandleIsStale(formingCandle.open_time, lastClosedOpenTime)) return
+
+    // series.update(), not setData() -- overwrites just the last bar (or
+    // appends one) without resetting the visible time range/zoom, so a
+    // live tick doesn't jolt the chart the way a full setData() would.
+    series.update({
+      time: toDisplayTime(formingCandle.open_time),
+      open: formingCandle.open,
+      high: formingCandle.high,
+      low: formingCandle.low,
+      close: formingCandle.close,
+    })
+  }, [formingCandle, candles])
 
   useEffect(() => {
     const series = seriesRef.current

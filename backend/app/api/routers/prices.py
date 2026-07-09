@@ -6,9 +6,10 @@ tick even though its candles are already populated from backfill/earlier
 ticks — without this fallback, its price card would stay blank ("—")
 indefinitely rather than showing the best data actually available.
 
-Returns one source's prices per call (`?source=`, default twelve_data) —
-the frontend only ever displays one source at a time, so there's no need
-for a dual-source payload it would only half-use."""
+Returns one source's prices per call (`?source=`, default tradingview —
+see Settings.tradingview_enabled) — the frontend only ever displays one
+source at a time, so there's no need for a dual-source payload it would
+only half-use."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +29,7 @@ router = APIRouter(prefix="/prices", tags=["prices"])
 
 @router.get("", response_model=list[PriceOut])
 async def get_latest_prices(
-    source: DataSource = Query(default=DataSource.TWELVE_DATA),
+    source: DataSource = Query(default=DataSource.TRADINGVIEW),
     feed_service: FeedService = Depends(get_feed_service),
     tradingview_feed_service: TradingViewFeedService | None = Depends(get_tradingview_feed_service),
     session: AsyncSession = Depends(get_session),

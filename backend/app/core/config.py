@@ -38,12 +38,15 @@ class Settings(BaseSettings):
     timeframes: list[Timeframe] = [Timeframe.M1, Timeframe.M5, Timeframe.M15, Timeframe.H1, Timeframe.H4]
     # A second, fully independent market-data pipeline (own tables, own
     # PredictionService/SignalTracker/SignalService instances) running
-    # alongside Twelve Data — see app/services/tradingview_feed_service.py.
-    # Defaults off: this uses TradingView's unofficial, undocumented
-    # WebSocket protocol (no official API for this), which can break if
-    # TradingView changes it — a fresh clone shouldn't silently depend on
-    # something this fragile.
-    tradingview_enabled: bool = False
+    # alongside the feed above — see app/services/tradingview_feed_service.py.
+    # Defaults on and is the default source (see DataSource.TRADINGVIEW's
+    # use as the default `source` query param throughout app/api/routers/):
+    # it needs no API key, unlike Twelve Data, so it's the path that works
+    # out of the box on a fresh clone. Still uses TradingView's unofficial,
+    # undocumented WebSocket protocol (no official API for this), which can
+    # break if TradingView changes it — set to False to fall back to the
+    # `feed_provider` pipeline only.
+    tradingview_enabled: bool = True
     tradingview_exchange: str = "OANDA"
     tradingview_poll_interval_seconds: float = Field(default=15.0, gt=0)
 

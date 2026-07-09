@@ -4,7 +4,11 @@ import type { Candle, DataSource, MarketSymbol, Price, Timeframe } from '../type
 import type { Prediction } from '../types/prediction'
 import type { Signal } from '../types/signal'
 
-const DEFAULT_SOURCE: DataSource = 'twelve_data'
+// Matches the backend's default (Settings.tradingview_enabled defaults
+// True, and every router's `source` query param defaults to tradingview)
+// — TradingView needs no API key, so it's the pipeline that works out of
+// the box on a fresh clone.
+const DEFAULT_SOURCE: DataSource = 'tradingview'
 
 export function getSymbols(): Promise<MarketSymbol[]> {
   return apiGet<MarketSymbol[]>('/symbols')

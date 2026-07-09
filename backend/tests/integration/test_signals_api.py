@@ -100,7 +100,7 @@ async def test_get_latest_signal_returns_the_already_open_signal_without_recompu
     async with api.session_factory() as session:
         saved = await SignalRepository(session).save(_signal())
 
-    response = await api.client.get("/signals/XAUUSD/latest")
+    response = await api.client.get("/signals/XAUUSD/latest", params={"source": "twelve_data"})
 
     assert response.status_code == 200
     body = response.json()
@@ -131,7 +131,7 @@ async def test_get_latest_signal_computes_and_persists_one_when_none_is_open(api
         ],
     )
 
-    response = await api.client.get("/signals/XAUUSD/latest")
+    response = await api.client.get("/signals/XAUUSD/latest", params={"source": "twelve_data"})
 
     assert response.status_code == 200
     body = response.json()
@@ -153,7 +153,7 @@ async def test_get_open_signals_returns_a_persisted_open_signal_with_its_id(api:
     async with api.session_factory() as session:
         saved = await SignalRepository(session).save(_signal())
 
-    response = await api.client.get("/signals/open")
+    response = await api.client.get("/signals/open", params={"source": "twelve_data"})
 
     assert response.status_code == 200
     body = response.json()
@@ -170,7 +170,7 @@ async def test_get_open_signals_filters_by_symbol(api: _ApiFixture) -> None:
         await repository.save(_signal(symbol=Symbol.XAUUSD))
         await repository.save(_signal(symbol=Symbol.EURUSD))
 
-    response = await api.client.get("/signals/open", params={"symbol": "EURUSD"})
+    response = await api.client.get("/signals/open", params={"symbol": "EURUSD", "source": "twelve_data"})
 
     assert response.status_code == 200
     body = response.json()
@@ -186,7 +186,7 @@ async def test_get_signal_history_includes_resolved_signals(api: _ApiFixture) ->
             saved.id, SignalStatus.WIN, datetime(2026, 1, 1, 5, tzinfo=UTC), realized_rr=3.0
         )
 
-    response = await api.client.get("/signals/XAUUSD/history")
+    response = await api.client.get("/signals/XAUUSD/history", params={"source": "twelve_data"})
 
     assert response.status_code == 200
     body = response.json()
@@ -200,21 +200,21 @@ async def test_get_signal_history_rejects_an_unknown_symbol(api: _ApiFixture) ->
     assert response.status_code == 422
 
 
-async def test_source_tradingview_reads_and_writes_its_own_signal_table(api: _ApiFixture) -> None:
-    # An open signal exists in the default (Twelve Data) table only.
+async def test_source_defaults_to_tradingview_and_stays_isolated_from_twelve_data(api: _ApiFixture) -> None:
+    # An open signal exists in the Twelve Data table only.
     async with api.session_factory() as session:
         await SignalRepository(session).save(_signal())
 
-    tradingview_open = await api.client.get("/signals/open", params={"source": "tradingview"})
-    assert tradingview_open.json() == []  # must not see the Twelve Data signal
+    default_open = await api.client.get("/signals/open")  # no ?source= at all
+    assert default_open.json() == []  # must not see the Twelve Data signal via the default
 
     async with api.session_factory() as session:
         await SignalRepository(session, model=TradingViewSignalORM).save(_signal(entry=1.0, stop=0.9, target=1.3))
 
-    tradingview_open = await api.client.get("/signals/open", params={"source": "tradingview"})
-    default_open = await api.client.get("/signals/open")
+    default_open = await api.client.get("/signals/open")  # no ?source= -> tradingview
+    twelve_data_open = await api.client.get("/signals/open", params={"source": "twelve_data"})
 
-    assert len(tradingview_open.json()) == 1
-    assert tradingview_open.json()[0]["entry"] == 1.0
     assert len(default_open.json()) == 1
-    assert default_open.json()[0]["entry"] == 2350.0
+    assert default_open.json()[0]["entry"] == 1.0
+    assert len(twelve_data_open.json()) == 1
+    assert twelve_data_open.json()[0]["entry"] == 2350.0

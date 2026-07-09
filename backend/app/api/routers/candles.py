@@ -27,7 +27,7 @@ async def get_candles(
     symbol: Symbol,
     timeframe: Timeframe,
     limit: int = Query(default=100, ge=1, le=_MAX_LIMIT),
-    source: DataSource = Query(default=DataSource.TWELVE_DATA),
+    source: DataSource = Query(default=DataSource.TRADINGVIEW),
     session: AsyncSession = Depends(get_session),
 ) -> list[CandleOut]:
     candles = await CandleRepository(session, model=candle_model_for(source)).get_recent(

@@ -65,7 +65,7 @@ async def _seed_candles(session_factory: async_sessionmaker[AsyncSession], close
 async def test_latest_prediction_computes_and_logs_a_new_prediction(api: _ApiFixture) -> None:
     await _seed_candles(api.session_factory, [100.0 + i for i in range(5)])
 
-    response = await api.client.get("/predictions/XAUUSD/1m/latest")
+    response = await api.client.get("/predictions/XAUUSD/1m/latest", params={"source": "twelve_data"})
 
     assert response.status_code == 200
     body = response.json()
@@ -85,10 +85,10 @@ async def test_latest_prediction_returns_404_when_no_candles_exist(api: _ApiFixt
 async def test_latest_prediction_is_readable_from_history_afterwards(api: _ApiFixture) -> None:
     await _seed_candles(api.session_factory, [100.0 + i for i in range(5)])
 
-    latest_response = await api.client.get("/predictions/XAUUSD/1m/latest")
+    latest_response = await api.client.get("/predictions/XAUUSD/1m/latest", params={"source": "twelve_data"})
     assert latest_response.status_code == 200
 
-    history_response = await api.client.get("/predictions/XAUUSD/1m/history")
+    history_response = await api.client.get("/predictions/XAUUSD/1m/history", params={"source": "twelve_data"})
     assert history_response.status_code == 200
     history = history_response.json()
     assert len(history) == 1
@@ -103,22 +103,21 @@ async def test_history_endpoint_rejects_unknown_symbol(api: _ApiFixture) -> None
 async def test_repeated_calls_to_latest_append_rather_than_overwrite(api: _ApiFixture) -> None:
     await _seed_candles(api.session_factory, [100.0 + i for i in range(5)])
 
-    await api.client.get("/predictions/XAUUSD/1m/latest")
-    await api.client.get("/predictions/XAUUSD/1m/latest")
+    await api.client.get("/predictions/XAUUSD/1m/latest", params={"source": "twelve_data"})
+    await api.client.get("/predictions/XAUUSD/1m/latest", params={"source": "twelve_data"})
 
-    history_response = await api.client.get("/predictions/XAUUSD/1m/history")
+    history_response = await api.client.get("/predictions/XAUUSD/1m/history", params={"source": "twelve_data"})
     assert len(history_response.json()) == 2
 
 
-async def test_source_tradingview_computes_from_its_own_candle_table_and_logs_separately(api: _ApiFixture) -> None:
-    # Only the default (Twelve Data) table has candles -- the TradingView
-    # table is empty, so its "latest" must 404 rather than silently
-    # borrowing the other source's candles.
+async def test_source_defaults_to_tradingview_and_stays_isolated_from_twelve_data(api: _ApiFixture) -> None:
+    # Only the Twelve Data table has candles -- the TradingView table is
+    # empty, so its "latest" (including via the implicit default, no
+    # ?source= at all) must 404 rather than silently borrowing the other
+    # source's candles.
     await _seed_candles(api.session_factory, [100.0 + i for i in range(5)])
 
-    no_tradingview_candles_yet = await api.client.get(
-        "/predictions/XAUUSD/1m/latest", params={"source": "tradingview"}
-    )
+    no_tradingview_candles_yet = await api.client.get("/predictions/XAUUSD/1m/latest")  # no ?source= at all
     assert no_tradingview_candles_yet.status_code == 404
 
     base = datetime(2026, 1, 1, tzinfo=UTC)
@@ -139,15 +138,13 @@ async def test_source_tradingview_computes_from_its_own_candle_table_and_logs_se
                 )
             )
 
-    tradingview_response = await api.client.get(
-        "/predictions/XAUUSD/1m/latest", params={"source": "tradingview"}
-    )
-    assert tradingview_response.status_code == 200
-    assert tradingview_response.json()["price"] == 5.0  # TradingView's own candles, not Twelve Data's 104.0
+    default_response = await api.client.get("/predictions/XAUUSD/1m/latest")  # no ?source= -> tradingview
+    assert default_response.status_code == 200
+    assert default_response.json()["price"] == 5.0  # TradingView's own candles, not Twelve Data's 104.0
 
-    # Logged to the TradingView prediction table only -- the default
-    # history (still just the one entry from earlier in this test) is unaffected.
-    default_history = await api.client.get("/predictions/XAUUSD/1m/history")
-    tradingview_history = await api.client.get("/predictions/XAUUSD/1m/history", params={"source": "tradingview"})
-    assert len(default_history.json()) == 0  # this test never called .../latest without source=tradingview
-    assert len(tradingview_history.json()) == 1
+    # Logged to the TradingView prediction table only -- Twelve Data's
+    # history (still just the one entry seeded above) is unaffected.
+    twelve_data_history = await api.client.get("/predictions/XAUUSD/1m/history", params={"source": "twelve_data"})
+    default_history = await api.client.get("/predictions/XAUUSD/1m/history")  # no ?source= -> tradingview
+    assert len(twelve_data_history.json()) == 0  # this test never called .../latest with source=twelve_data
+    assert len(default_history.json()) == 1

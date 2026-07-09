@@ -35,7 +35,10 @@ interface MarketState {
 }
 
 export const useMarketStore = create<MarketState>((set) => ({
-  activeSource: 'twelve_data',
+  // Matches the backend's default source (Settings.tradingview_enabled
+  // defaults True) — TradingView needs no API key, so it's the pipeline
+  // that works out of the box on a fresh clone.
+  activeSource: 'tradingview',
   feedStatus: emptyBySource(() => null),
   prices: emptyBySource(() => ({})),
   predictions: emptyBySource(() => ({})),

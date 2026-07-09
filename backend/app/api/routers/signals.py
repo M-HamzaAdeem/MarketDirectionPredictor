@@ -35,7 +35,7 @@ _MAX_HISTORY_LIMIT = 500
 @router.get("/open", response_model=list[SignalOut])
 async def get_open_signals(
     symbol: Symbol | None = None,
-    source: DataSource = Query(default=DataSource.TWELVE_DATA),
+    source: DataSource = Query(default=DataSource.TRADINGVIEW),
     session: AsyncSession = Depends(get_session),
 ) -> list[SignalOut]:
     signals = await SignalRepository(session, model=signal_model_for(source)).get_open(symbol)
@@ -45,7 +45,7 @@ async def get_open_signals(
 @router.get("/{symbol}/latest", response_model=SignalOut)
 async def get_latest_signal(
     symbol: Symbol,
-    source: DataSource = Query(default=DataSource.TWELVE_DATA),
+    source: DataSource = Query(default=DataSource.TRADINGVIEW),
     session: AsyncSession = Depends(get_session),
 ) -> SignalOut:
     # A GET that can write is a deliberate, pattern-consistent choice, not
@@ -83,7 +83,7 @@ async def get_latest_signal(
 async def get_signal_history(
     symbol: Symbol,
     limit: int = Query(default=100, ge=1, le=_MAX_HISTORY_LIMIT),
-    source: DataSource = Query(default=DataSource.TWELVE_DATA),
+    source: DataSource = Query(default=DataSource.TRADINGVIEW),
     session: AsyncSession = Depends(get_session),
 ) -> list[SignalOut]:
     signals = await SignalRepository(session, model=signal_model_for(source)).get_recent(symbol, limit=limit)
